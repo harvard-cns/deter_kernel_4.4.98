@@ -245,6 +245,9 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 							   inet->inet_daddr,
 							   inet->inet_sport,
 							   usin->sin_port);
+	#if DERAND_ENABLE
+	tp->write_seq = 0; // set init seq # to 0
+	#endif
 
 	inet->inet_id = tp->write_seq ^ jiffies;
 

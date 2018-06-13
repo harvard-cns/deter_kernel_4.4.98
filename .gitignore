@@ -23,3 +23,4 @@ System.map
 vmlinux
 vmlinux-gdb.py
 include/generated
+include/config/kernel.release
