@@ -99,7 +99,11 @@ void tcp_rack_advance(struct tcp_sock *tp,
 		 * so it's at least one RTT (i.e., retransmission is at least
 		 * an RTT later).
 		 */
+		#if DERAND_ENABLE
+		derand_skb_mstamp_get((struct sock*)tp, &now, 10);
+		#else
 		skb_mstamp_get(&now);
+		#endif
 		if (skb_mstamp_us_delta(&now, xmit_time) < tcp_min_rtt(tp))
 			return;
 	}

@@ -46,6 +46,8 @@
 
 #include <linux/seq_file.h>
 #include <linux/memcontrol.h>
+/* DERAND */
+#include <net/derand_ops.h>
 
 extern struct inet_hashinfo tcp_hashinfo;
 
@@ -317,7 +319,11 @@ static inline bool between(__u32 seq1, __u32 seq2, __u32 seq3)
 static inline bool tcp_out_of_memory(struct sock *sk)
 {
 	if (sk->sk_wmem_queued > SOCK_MIN_SNDBUF &&
+		#if DERAND_ENABLE
+	    derand_sk_memory_allocated(sk) > sk_prot_mem_limits(sk, 2))
+		#else
 	    sk_memory_allocated(sk) > sk_prot_mem_limits(sk, 2))
+		#endif
 		return true;
 	return false;
 }
@@ -500,7 +506,11 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb);
 static inline void tcp_synq_overflow(const struct sock *sk)
 {
 	unsigned long last_overflow = tcp_sk(sk)->rx_opt.ts_recent_stamp;
+	#if DERAND_ENABLE
+	unsigned long now = derand_jiffies(sk, 0);
+	#else
 	unsigned long now = jiffies;
+	#endif
 
 	if (time_after(now, last_overflow + HZ))
 		tcp_sk(sk)->rx_opt.ts_recent_stamp = now;
@@ -511,7 +521,11 @@ static inline bool tcp_synq_no_recent_overflow(const struct sock *sk)
 {
 	unsigned long last_overflow = tcp_sk(sk)->rx_opt.ts_recent_stamp;
 
+	#if DERAND_ENABLE
+	return time_after(derand_jiffies(sk, 1), last_overflow + TCP_SYNCOOKIE_VALID);
+	#else
 	return time_after(jiffies, last_overflow + TCP_SYNCOOKIE_VALID);
+	#endif
 }
 
 static inline u32 tcp_cookie_time(void)
@@ -1187,7 +1201,11 @@ static inline void tcp_slow_start_after_idle_check(struct sock *sk)
 
 	if (!sysctl_tcp_slow_start_after_idle || tp->packets_out)
 		return;
+	#if DERAND_ENABLE
+	delta = derand_tcp_time_stamp(sk, 0) - tp->lsndtime;
+	#else
 	delta = tcp_time_stamp - tp->lsndtime;
+	#endif
 	if (delta > inet_csk(sk)->icsk_rto)
 		tcp_cwnd_restart(sk, delta);
 }
@@ -1241,8 +1259,13 @@ static inline u32 keepalive_time_elapsed(const struct tcp_sock *tp)
 {
 	const struct inet_connection_sock *icsk = &tp->inet_conn;
 
+	#if DERAND_ENABLE
+	return min_t(u32, derand_tcp_time_stamp((struct sock*)tp, 1) - icsk->icsk_ack.lrcvtime,
+			  derand_tcp_time_stamp((struct sock*)tp, 2) - tp->rcv_tstamp);
+	#else
 	return min_t(u32, tcp_time_stamp - icsk->icsk_ack.lrcvtime,
 			  tcp_time_stamp - tp->rcv_tstamp);
+	#endif
 }
 
 static inline int tcp_fin_time(const struct sock *sk)

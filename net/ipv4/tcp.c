@@ -282,6 +282,9 @@
 #include <asm/unaligned.h>
 #include <net/busy_poll.h>
 
+/* DERAND */
+#include <net/derand_ops.h>
+
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
 int sysctl_tcp_min_tso_segs __read_mostly = 2;
@@ -654,7 +657,11 @@ static bool tcp_should_autocork(struct sock *sk, struct sk_buff *skb,
 	return skb->len < size_goal &&
 	       sysctl_tcp_autocorking &&
 	       skb != tcp_write_queue_head(sk) &&
+		   #if DERAND_ENABLE
+	       derand_effect_bool(sk, 6, atomic_read(&sk->sk_wmem_alloc) > skb->truesize);
+		   #else
 	       atomic_read(&sk->sk_wmem_alloc) > skb->truesize;
+		   #endif
 }
 
 static void tcp_push(struct sock *sk, int flags, int mss_now,
@@ -682,7 +689,11 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 		/* It is possible TX completion already happened
 		 * before we set TSQ_THROTTLED.
 		 */
+		#if DERAND_ENABLE
+		if (derand_effect_bool(sk, 7, atomic_read(&sk->sk_wmem_alloc) > skb->truesize))
+		#else
 		if (atomic_read(&sk->sk_wmem_alloc) > skb->truesize)
+		#endif
 			return;
 	}
 
@@ -827,7 +838,11 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 	/* The TCP header must be at least 32-bit aligned.  */
 	size = ALIGN(size, 4);
 
+	#if DERAND_ENABLE
+	if (unlikely(derand_tcp_under_memory_pressure(sk)))
+	#else
 	if (unlikely(tcp_under_memory_pressure(sk)))
+	#endif
 		sk_mem_reclaim_partial(sk);
 
 	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
@@ -1024,6 +1039,9 @@ int tcp_sendpage(struct sock *sk, struct page *page, int offset,
 {
 	ssize_t res;
 
+	#if DERAND_ENABLE
+	derand_record_ops.new_sendpage(sk, offset, size, flags);
+	#endif
 	if (!(sk->sk_route_caps & NETIF_F_SG) ||
 	    !(sk->sk_route_caps & NETIF_F_ALL_CSUM))
 		return sock_no_sendpage(sk->sk_socket, page, offset, size,
@@ -1105,7 +1123,13 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	bool sg;
 	long timeo;
 
+	#if DERAND_ENABLE
+	u32 sc_id;
+	sc_id = derand_record_ops.new_sendmsg(sk, msg, size);
+	derand_lock_sock(sk, sc_id);
+	#else
 	lock_sock(sk);
+	#endif /* DERAND_ENABLE */
 
 	flags = msg->msg_flags;
 	if (flags & MSG_FASTOPEN) {
@@ -1281,7 +1305,11 @@ wait_for_memory:
 			tcp_push(sk, flags & ~MSG_MORE, mss_now,
 				 TCP_NAGLE_PUSH, size_goal);
 
+		#if DERAND_ENABLE
+		err = derand_sk_stream_wait_memory(sk, &timeo, sc_id);
+		#else
 		err = sk_stream_wait_memory(sk, &timeo);
+		#endif /* DERAND_ENABLE */
 		if (err != 0)
 			goto do_error;
 
@@ -1292,7 +1320,11 @@ out:
 	if (copied)
 		tcp_push(sk, flags, mss_now, tp->nonagle, size_goal);
 out_nopush:
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id);
+	#else
 	release_sock(sk);
+	#endif /* DERAND_ENABLE */
 	return copied + copied_syn;
 
 do_fault:
@@ -1313,7 +1345,11 @@ out_err:
 	/* make sure we wake any epoll edge trigger waiter */
 	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
 		sk->sk_write_space(sk);
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id);
+	#else
 	release_sock(sk);
+	#endif /* DERAND_ENABLE */
 	return err;
 }
 EXPORT_SYMBOL(tcp_sendmsg);
@@ -1594,6 +1630,10 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	struct task_struct *user_recv = NULL;
 	struct sk_buff *skb, *last;
 	u32 urg_hole = 0;
+	#if DERAND_ENABLE
+	u32 sc_id;
+	sc_id = derand_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+	#endif /* DERAND_ENABLE */
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
@@ -1602,7 +1642,11 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	    (sk->sk_state == TCP_ESTABLISHED))
 		sk_busy_loop(sk, nonblock);
 
+	#if DERAND_ENABLE
+	derand_lock_sock(sk, sc_id);
+	#else
 	lock_sock(sk);
+	#endif /* DERAND_ENABLE */
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -1771,10 +1815,19 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
+			#if DERAND_ENABLE
 			release_sock(sk);
 			lock_sock(sk);
+			#else
+			derand_release_sock(sk, sc_id);
+			derand_lock_sock(sk, sc_id);
+			#endif /* DERAND_ENABLE */
 		} else {
+			#if DERAND_ENABLE
+			derand_sk_wait_data(sk, &timeo, last, sc_id);
+			#else
 			sk_wait_data(sk, &timeo, last);
+			#endif /* DERAND_ENABLE */
 		}
 
 		if (user_recv) {
@@ -1899,11 +1952,19 @@ skip_copy:
 	/* Clean up data we have read: This will do ACK frames. */
 	tcp_cleanup_rbuf(sk, copied);
 
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id);
+	#else
 	release_sock(sk);
+	#endif /* DERAND_ENABLE */
 	return copied;
 
 out:
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id);
+	#else
 	release_sock(sk);
+	#endif /* DERAND_ENABLE */
 	return err;
 
 recv_urg:
@@ -2608,7 +2669,11 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		if (!tp->repair)
 			err = -EPERM;
 		else
+			#if DERAND_ENABLE
+			tp->tsoffset = val - derand_tcp_time_stamp(sk, 3);
+			#else
 			tp->tsoffset = val - tcp_time_stamp;
+			#endif
 		break;
 	case TCP_NOTSENT_LOWAT:
 		tp->notsent_lowat = val;
@@ -2652,7 +2717,11 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 {
 	const struct tcp_sock *tp = tcp_sk(sk); /* iff sk_type == SOCK_STREAM */
 	const struct inet_connection_sock *icsk = inet_csk(sk);
+	#if DERAND_ENABLE
+	u32 now = derand_tcp_time_stamp(sk, 4);
+	#else
 	u32 now = tcp_time_stamp;
+	#endif
 	unsigned int start;
 	u64 rate64;
 	u32 rate;
@@ -2875,7 +2944,11 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 	case TCP_TIMESTAMP:
+		#if DERAND_ENABLE
+		val = derand_tcp_time_stamp(sk, 5) + tp->tsoffset;
+		#else
 		val = tcp_time_stamp + tp->tsoffset;
+		#endif
 		break;
 	case TCP_NOTSENT_LOWAT:
 		val = tp->notsent_lowat;

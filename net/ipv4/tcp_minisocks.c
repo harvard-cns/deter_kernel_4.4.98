@@ -26,6 +26,8 @@
 #include <net/tcp.h>
 #include <net/inet_common.h>
 #include <net/xfrm.h>
+/* DERAND */
+#include <net/derand_ops.h>
 
 int sysctl_tcp_syncookies __read_mostly = 1;
 EXPORT_SYMBOL(sysctl_tcp_syncookies);
@@ -472,7 +474,11 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 		newtp->mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT);
 		newtp->rtt_min[0].rtt = ~0U;
 		newicsk->icsk_rto = TCP_TIMEOUT_INIT;
+		#if DERAND_ENABLE
+		newicsk->icsk_ack.lrcvtime = derand_tcp_time_stamp(newsk, 33); // should be irrelavent: this is before we create recorder
+		#else
 		newicsk->icsk_ack.lrcvtime = tcp_time_stamp;
+		#endif
 
 		newtp->packets_out = 0;
 		newtp->retrans_out = 0;
@@ -628,7 +634,11 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 					  &tcp_rsk(req)->last_oow_ack_time) &&
 
 		    !inet_rtx_syn_ack(sk, req)) {
+			#if DERAND_ENABLE
+			unsigned long expires = derand_jiffies(sk, 4); // should be irrelavent: this is before server creates a new sock. I.e., the sk is the listening sock
+			#else
 			unsigned long expires = jiffies;
+			#endif
 
 			expires += min(TCP_TIMEOUT_INIT << req->num_timeout,
 				       TCP_RTO_MAX);

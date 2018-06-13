@@ -21,6 +21,8 @@
 #include <linux/module.h>
 #include <linux/gfp.h>
 #include <net/tcp.h>
+/* DERAND */
+#include <net/derand_ops.h>
 
 int sysctl_tcp_syn_retries __read_mostly = TCP_SYN_RETRIES;
 int sysctl_tcp_synack_retries __read_mostly = TCP_SYNACK_RETRIES;
@@ -59,7 +61,11 @@ static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 
 	/* If peer does not open window for long time, or did not transmit
 	 * anything for long time, penalize it. */
+	#if DERAND_ENABLE
+	if ((s32)(derand_tcp_time_stamp(sk, 47) - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
+	#else
 	if ((s32)(tcp_time_stamp - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
+	#endif
 		shift++;
 
 	/* If some dubious ICMP arrived, penalize even more. */
@@ -69,7 +75,11 @@ static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 	if (tcp_check_oom(sk, shift)) {
 		/* Catch exceptional cases, when connection requires reset.
 		 *      1. Last segment was sent recently. */
+		#if DERAND_ENABLE
+		if ((s32)(derand_tcp_time_stamp(sk, 48) - tp->lsndtime) <= TCP_TIMEWAIT_LEN ||
+		#else
 		if ((s32)(tcp_time_stamp - tp->lsndtime) <= TCP_TIMEWAIT_LEN ||
+		#endif
 		    /*  2. Window is closed. */
 		    (!tp->snd_wnd && !tp->packets_out))
 			do_reset = true;
@@ -107,7 +117,11 @@ static void tcp_mtu_probing(struct inet_connection_sock *icsk, struct sock *sk)
 	if (net->ipv4.sysctl_tcp_mtu_probing) {
 		if (!icsk->icsk_mtup.enabled) {
 			icsk->icsk_mtup.enabled = 1;
+			#if DERAND_ENABLE
+			icsk->icsk_mtup.probe_timestamp = derand_tcp_time_stamp(sk, 49);
+			#else
 			icsk->icsk_mtup.probe_timestamp = tcp_time_stamp;
+			#endif
 			tcp_sync_mss(sk, icsk->icsk_pmtu_cookie);
 		} else {
 			struct net *net = sock_net(sk);
@@ -152,7 +166,11 @@ static bool retransmits_timed_out(struct sock *sk,
 			timeout = ((2 << linear_backoff_thresh) - 1) * rto_base +
 				(boundary - linear_backoff_thresh) * TCP_RTO_MAX;
 	}
+	#if DERAND_ENABLE
+	return (derand_tcp_time_stamp(sk, 50) - start_ts) >= timeout;
+	#else
 	return (tcp_time_stamp - start_ts) >= timeout;
+	#endif
 }
 
 /* A write timeout has occurred. Process the after effects. */
@@ -227,7 +245,11 @@ void tcp_delack_timer_handler(struct sock *sk)
 	    !(icsk->icsk_ack.pending & ICSK_ACK_TIMER))
 		goto out;
 
+	#if DERAND_ENABLE
+	if (time_after(icsk->icsk_ack.timeout, derand_jiffies(sk, 8))) {
+	#else
 	if (time_after(icsk->icsk_ack.timeout, jiffies)) {
+	#endif
 		sk_reset_timer(sk, &icsk->icsk_delack_timer, icsk->icsk_ack.timeout);
 		goto out;
 	}
@@ -260,7 +282,11 @@ void tcp_delack_timer_handler(struct sock *sk)
 	}
 
 out:
+	#if DERAND_ENABLE
+	if (derand_tcp_under_memory_pressure(sk))
+	#else
 	if (tcp_under_memory_pressure(sk))
+	#endif
 		sk_mem_reclaim(sk);
 }
 
@@ -269,6 +295,9 @@ static void tcp_delack_timer(unsigned long data)
 	struct sock *sk = (struct sock *)data;
 
 	bh_lock_sock(sk);
+	#if DERAND_ENABLE
+	derand_record_ops.delack_timer(sk);
+	#endif /* DERAND_ENABLE */
 	if (!sock_owned_by_user(sk)) {
 		tcp_delack_timer_handler(sk);
 	} else {
@@ -304,9 +333,18 @@ static void tcp_probe_timer(struct sock *sk)
 	 */
 	start_ts = tcp_skb_timestamp(tcp_send_head(sk));
 	if (!start_ts)
+		#if DERAND_ENABLE
+		derand_skb_mstamp_get(sk, &tcp_send_head(sk)->skb_mstamp, 9);
+		#else
 		skb_mstamp_get(&tcp_send_head(sk)->skb_mstamp);
+		#endif
+	#if DERAND_ENABLE
+	else if (icsk->icsk_user_timeout &&
+		 (s32)(derand_tcp_time_stamp(sk, 51) - start_ts) > icsk->icsk_user_timeout)
+	#else
 	else if (icsk->icsk_user_timeout &&
 		 (s32)(tcp_time_stamp - start_ts) > icsk->icsk_user_timeout)
+	#endif
 		goto abort;
 
 	max_probes = sysctl_tcp_retries2;
@@ -406,7 +444,11 @@ void tcp_retransmit_timer(struct sock *sk)
 					    tp->snd_una, tp->snd_nxt);
 		}
 #endif
+		#if DERAND_ENABLE
+		if (derand_tcp_time_stamp(sk, 52) - tp->rcv_tstamp > TCP_RTO_MAX) {
+		#else
 		if (tcp_time_stamp - tp->rcv_tstamp > TCP_RTO_MAX) {
+		#endif
 			tcp_write_err(sk);
 			goto out;
 		}
@@ -509,7 +551,11 @@ void tcp_write_timer_handler(struct sock *sk)
 	    !icsk->icsk_pending)
 		goto out;
 
+	#if DERAND_ENABLE
+	if (time_after(icsk->icsk_timeout, derand_jiffies(sk, 9))) {
+	#else
 	if (time_after(icsk->icsk_timeout, jiffies)) {
+	#endif
 		sk_reset_timer(sk, &icsk->icsk_retransmit_timer, icsk->icsk_timeout);
 		goto out;
 	}
@@ -542,6 +588,9 @@ static void tcp_write_timer(unsigned long data)
 	struct sock *sk = (struct sock *)data;
 
 	bh_lock_sock(sk);
+	#if DERAND_ENABLE
+	derand_record_ops.write_timer(sk);
+	#endif /* DERAND_ENABLE */
 	if (!sock_owned_by_user(sk)) {
 		tcp_write_timer_handler(sk);
 	} else {
@@ -582,6 +631,9 @@ static void tcp_keepalive_timer (unsigned long data)
 
 	/* Only process if socket is not in use. */
 	bh_lock_sock(sk);
+	#if DERAND_ENABLE
+	derand_record_ops.keepalive_timer(sk);
+	#endif /* DERAND_ENABLE */
 	if (sock_owned_by_user(sk)) {
 		/* Try again later. */
 		inet_csk_reset_keepalive_timer (sk, HZ/20);

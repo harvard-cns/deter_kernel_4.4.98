@@ -143,6 +143,8 @@
 
 #include <net/busy_poll.h>
 
+#include <net/derand_ops.h>
+
 static DEFINE_MUTEX(proto_list_mutex);
 static LIST_HEAD(proto_list);
 
@@ -1444,6 +1446,10 @@ void sk_destruct(struct sock *sk)
 {
 	struct sk_filter *filter;
 
+	#if DERAND_ENABLE
+	derand_record_ops.recorder_destruct(sk);
+	// NOTE: we do not need to worry about the wmem_alloc reads below, as the sk has finished
+	#endif
 	if (sk->sk_destruct)
 		sk->sk_destruct(sk);
 
@@ -2006,6 +2012,27 @@ static void __lock_sock(struct sock *sk)
 	finish_wait(&sk->sk_lock.wq, &wait);
 }
 
+#if DERAND_ENABLE
+static void __derand_lock_sock(struct sock *sk, u32 sc_id)
+	__releases(&sk->sk_lock.slock)
+	__acquires(&sk->sk_lock.slock)
+{
+	DEFINE_WAIT(wait);
+
+	for (;;) {
+		prepare_to_wait_exclusive(&sk->sk_lock.wq, &wait,
+					TASK_UNINTERRUPTIBLE);
+		spin_unlock_bh(&sk->sk_lock.slock);
+		schedule();
+		spin_lock_bh(&sk->sk_lock.slock);
+		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+		if (!sock_owned_by_user(sk))
+			break;
+	}
+	finish_wait(&sk->sk_lock.wq, &wait);
+}
+#endif /* DERAND_ENABLE */
+
 static void __release_sock(struct sock *sk)
 	__releases(&sk->sk_lock.slock)
 	__acquires(&sk->sk_lock.slock)
@@ -2045,6 +2072,48 @@ static void __release_sock(struct sock *sk)
 	sk->sk_backlog.len = 0;
 }
 
+#if DERAND_ENABLE
+static void __derand_release_sock(struct sock *sk, u32 sc_id)
+	__releases(&sk->sk_lock.slock)
+	__acquires(&sk->sk_lock.slock)
+{
+	struct sk_buff *skb = sk->sk_backlog.head;
+
+	do {
+		sk->sk_backlog.head = sk->sk_backlog.tail = NULL;
+		bh_unlock_sock(sk);
+
+		do {
+			struct sk_buff *next = skb->next;
+
+			prefetch(next);
+			WARN_ON_ONCE(skb_dst_is_noref(skb));
+			skb->next = NULL;
+			sk_backlog_rcv(sk, skb);
+
+			/*
+			 * We are in process context here with softirqs
+			 * disabled, use cond_resched_softirq() to preempt.
+			 * This is safe to do because we've taken the backlog
+			 * queue private:
+			 */
+			cond_resched_softirq();
+
+			skb = next;
+		} while (skb != NULL);
+
+		bh_lock_sock(sk);
+		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+	} while ((skb = sk->sk_backlog.head) != NULL);
+
+	/*
+	 * Doing the zeroing here guarantee we can not loop forever
+	 * while a wild producer attempts to flood us.
+	 */
+	sk->sk_backlog.len = 0;
+}
+#endif /* DERAND_ENABLE */
+
 /**
  * sk_wait_data - wait for data to arrive at sk_receive_queue
  * @sk:    sock to wait on
@@ -2070,6 +2139,22 @@ int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb)
 }
 EXPORT_SYMBOL(sk_wait_data);
 
+#if DERAND_ENABLE
+int derand_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id)
+{
+	int rc;
+	DEFINE_WAIT(wait);
+
+	prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
+	sk_set_bit(SOCKWQ_ASYNC_WAITDATA, sk);
+	rc = derand_sk_wait_event(sk, timeo, skb_peek_tail(&sk->sk_receive_queue) != skb, sc_id);
+	sk_clear_bit(SOCKWQ_ASYNC_WAITDATA, sk);
+	finish_wait(sk_sleep(sk), &wait);
+	return rc;
+}
+EXPORT_SYMBOL(derand_sk_wait_data);
+#endif /* DERAND_ENABLE */
+
 /**
  *	__sk_mem_schedule - increase sk_forward_alloc and memory_allocated
  *	@sk: socket
@@ -2092,20 +2177,38 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 	allocated = sk_memory_allocated_add(sk, amt, &parent_status);
 
 	/* Under limit. */
+	#if DERAND_ENABLE
+	if (derand_effect_bool(sk, 8, 
+		parent_status == UNDER_LIMIT &&
+			allocated <= sk_prot_mem_limits(sk, 0))) {
+	#else
 	if (parent_status == UNDER_LIMIT &&
 			allocated <= sk_prot_mem_limits(sk, 0)) {
+	#endif
 		sk_leave_memory_pressure(sk);
 		return 1;
 	}
 
 	/* Under pressure. (we or our parents) */
+	#if DERAND_ENABLE
+	if (derand_effect_bool(sk, 9,
+		(parent_status > SOFT_LIMIT) ||
+			allocated > sk_prot_mem_limits(sk, 1)))
+	#else
 	if ((parent_status > SOFT_LIMIT) ||
 			allocated > sk_prot_mem_limits(sk, 1))
+	#endif
 		sk_enter_memory_pressure(sk);
 
 	/* Over hard limit (we or our parents) */
+	#if DERAND_ENABLE
+	if (derand_effect_bool(sk, 10,
+		(parent_status == OVER_LIMIT) ||
+			(allocated > sk_prot_mem_limits(sk, 2))))
+	#else
 	if ((parent_status == OVER_LIMIT) ||
 			(allocated > sk_prot_mem_limits(sk, 2)))
+	#endif
 		goto suppress_allocation;
 
 	/* guarantee minimum buffer size under pressure */
@@ -2117,21 +2220,45 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 		if (sk->sk_type == SOCK_STREAM) {
 			if (sk->sk_wmem_queued < prot->sysctl_wmem[0])
 				return 1;
+		#if DERAND_ENABLE
+		} else if (derand_effect_bool(sk, 4, 
+				   atomic_read(&sk->sk_wmem_alloc) < 
+			   prot->sysctl_wmem[0])
+				)
+		#else
 		} else if (atomic_read(&sk->sk_wmem_alloc) <
 			   prot->sysctl_wmem[0])
+		#endif
 				return 1;
 	}
 
 	if (sk_has_memory_pressure(sk)) {
 		int alloc;
 
+		#if DERAND_ENABLE
+		if (!derand_sk_under_memory_pressure(sk))
+		#else
 		if (!sk_under_memory_pressure(sk))
+		#endif
 			return 1;
+		#if DERAND_ENABLE
+		alloc = derand_sk_sockets_allocated_read_positive(sk);
+		#else
 		alloc = sk_sockets_allocated_read_positive(sk);
+		#endif
+		#if DERAND_ENABLE
+		if (derand_effect_bool(sk, 5,
+			sk_prot_mem_limits(sk, 2) > alloc *
+		    sk_mem_pages(sk->sk_wmem_queued +
+				 atomic_read(&sk->sk_rmem_alloc) +
+				 sk->sk_forward_alloc))
+		   )
+		#else
 		if (sk_prot_mem_limits(sk, 2) > alloc *
 		    sk_mem_pages(sk->sk_wmem_queued +
 				 atomic_read(&sk->sk_rmem_alloc) +
 				 sk->sk_forward_alloc))
+		#endif
 			return 1;
 	}
 
@@ -2169,8 +2296,16 @@ void __sk_mem_reclaim(struct sock *sk, int amount)
 	sk_memory_allocated_sub(sk, amount);
 	sk->sk_forward_alloc -= amount << SK_MEM_QUANTUM_SHIFT;
 
+	#if DERAND_ENABLE
+	if (derand_sk_under_memory_pressure(sk) &&
+	#else
 	if (sk_under_memory_pressure(sk) &&
+	#endif
+		#if DERAND_ENABLE
+	    (derand_sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))
+		#else
 	    (sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))
+		#endif
 		sk_leave_memory_pressure(sk);
 }
 EXPORT_SYMBOL(__sk_mem_reclaim);
@@ -2460,6 +2595,25 @@ void lock_sock_nested(struct sock *sk, int subclass)
 }
 EXPORT_SYMBOL(lock_sock_nested);
 
+#if DERAND_ENABLE
+void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
+{
+	might_sleep();
+	spin_lock_bh(&sk->sk_lock.slock);
+	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+	if (sk->sk_lock.owned)
+		__derand_lock_sock(sk, sc_id);
+	sk->sk_lock.owned = 1;
+	spin_unlock(&sk->sk_lock.slock);
+	/*
+	 * The sk_lock has mutex_lock() semantics here:
+	 */
+	mutex_acquire(&sk->sk_lock.dep_map, subclass, 0, _RET_IP_);
+	local_bh_enable();
+}
+EXPORT_SYMBOL(derand_lock_sock_nested);
+#endif /* DERAND_ENABLE */
+
 void release_sock(struct sock *sk)
 {
 	/*
@@ -2483,6 +2637,33 @@ void release_sock(struct sock *sk)
 	spin_unlock_bh(&sk->sk_lock.slock);
 }
 EXPORT_SYMBOL(release_sock);
+
+#if DERAND_ENABLE
+void derand_release_sock(struct sock *sk, u32 sc_id)
+{
+	/*
+	 * The sk_lock has mutex_unlock() semantics:
+	 */
+	mutex_release(&sk->sk_lock.dep_map, 1, _RET_IP_);
+
+	spin_lock_bh(&sk->sk_lock.slock);
+	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+	if (sk->sk_backlog.tail)
+		__derand_release_sock(sk, sc_id);
+
+	/* Warning : release_cb() might need to release sk ownership,
+	 * ie call sock_release_ownership(sk) before us.
+	 */
+	if (sk->sk_prot->release_cb)
+		sk->sk_prot->release_cb(sk);
+
+	sock_release_ownership(sk);
+	if (waitqueue_active(&sk->sk_lock.wq))
+		wake_up(&sk->sk_lock.wq);
+	spin_unlock_bh(&sk->sk_lock.slock);
+}
+EXPORT_SYMBOL(derand_release_sock);
+#endif /* DERAND_ENABLE */
 
 /**
  * lock_sock_fast - fast version of lock_sock

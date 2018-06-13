@@ -41,6 +41,8 @@
 #include <linux/compiler.h>
 #include <linux/gfp.h>
 #include <linux/module.h>
+/* DERAND */
+#include <net/derand_ops.h>
 
 /* People can turn this off for buggy TCP's found in printers etc. */
 int sysctl_tcp_retrans_collapse __read_mostly = 1;
@@ -153,7 +155,11 @@ void tcp_cwnd_restart(struct sock *sk, s32 delta)
 	while ((delta -= inet_csk(sk)->icsk_rto) > 0 && cwnd > restart_cwnd)
 		cwnd >>= 1;
 	tp->snd_cwnd = max(cwnd, restart_cwnd);
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 34);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 	tp->snd_cwnd_used = 0;
 }
 
@@ -162,7 +168,11 @@ static void tcp_event_data_sent(struct tcp_sock *tp,
 				struct sock *sk)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
+	#if DERAND_ENABLE
+	const u32 now = derand_tcp_time_stamp(sk, 35);
+	#else
 	const u32 now = tcp_time_stamp;
+	#endif
 
 	if (tcp_packets_in_flight(tp) == 0)
 		tcp_ca_event(sk, CA_EVENT_TX_START);
@@ -747,7 +757,7 @@ static void tcp_tsq_handler(struct sock *sk)
  * transferring tsq->head because tcp_wfree() might
  * interrupt us (non NAPI drivers)
  */
-static void tcp_tasklet_func(unsigned long data)
+void tcp_tasklet_func(unsigned long data)
 {
 	struct tsq_tasklet *tsq = (struct tsq_tasklet *)data;
 	LIST_HEAD(list);
@@ -766,6 +776,9 @@ static void tcp_tasklet_func(unsigned long data)
 
 		sk = (struct sock *)tp;
 		bh_lock_sock(sk);
+		#if DERAND_ENABLE
+		derand_record_ops.tasklet(sk);
+		#endif /* DERAND_ENABLE */
 
 		if (!sock_owned_by_user(sk)) {
 			tcp_tsq_handler(sk);
@@ -779,6 +792,7 @@ static void tcp_tasklet_func(unsigned long data)
 		sk_free(sk);
 	}
 }
+EXPORT_SYMBOL(tcp_tasklet_func);
 
 #define TCP_DEFERRED_ALL ((1UL << TCP_TSQ_DEFERRED) |		\
 			  (1UL << TCP_WRITE_TIMER_DEFERRED) |	\
@@ -863,6 +877,11 @@ void tcp_wfree(struct sk_buff *skb)
 	 */
 	wmem = atomic_sub_return(skb->truesize - 1, &sk->sk_wmem_alloc);
 
+	#if DERAND_ENABLE
+	// if in replay mode, skip tasklet schedule, because replay module will issue tasklet
+	if (sk->replayer)
+		goto out;
+	#endif
 	/* If this softirq is serviced by ksoftirqd, we are likely under stress.
 	 * Wait until our queues (qdisc + devices) are drained.
 	 * This gives :
@@ -917,7 +936,11 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	BUG_ON(!skb || !tcp_skb_pcount(skb));
 
 	if (clone_it) {
+		#if DERAND_ENABLE
+		derand_skb_mstamp_get(sk, &skb->skb_mstamp, 2);
+		#else
 		skb_mstamp_get(&skb->skb_mstamp);
+		#endif
 
 		if (unlikely(skb_cloned(skb)))
 			skb = pskb_copy(skb, gfp_mask);
@@ -946,7 +969,11 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	 * TODO: Ideally, in-flight pure ACK packets should not matter here.
 	 * One way to get this would be to set skb->truesize = 2 on them.
 	 */
+	#if DERAND_ENABLE
+	skb->ooo_okay = derand_effect_bool(sk, 11, sk_wmem_alloc_get(sk) < SKB_TRUESIZE(1));
+	#else
 	skb->ooo_okay = sk_wmem_alloc_get(sk) < SKB_TRUESIZE(1);
+	#endif
 
 	skb_push(skb, tcp_header_size);
 	skb_reset_transport_header(skb);
@@ -1365,7 +1392,11 @@ void tcp_mtup_init(struct sock *sk)
 	icsk->icsk_mtup.search_low = tcp_mss_to_mtu(sk, net->ipv4.sysctl_tcp_base_mss);
 	icsk->icsk_mtup.probe_size = 0;
 	if (icsk->icsk_mtup.enabled)
+		#if DERAND_ENABLE
+		icsk->icsk_mtup.probe_timestamp = derand_tcp_time_stamp(sk, 36);
+		#else
 		icsk->icsk_mtup.probe_timestamp = tcp_time_stamp;
+		#endif
 }
 EXPORT_SYMBOL(tcp_mtup_init);
 
@@ -1466,7 +1497,11 @@ static void tcp_cwnd_application_limited(struct sock *sk)
 		}
 		tp->snd_cwnd_used = 0;
 	}
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 37);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 }
 
 static void tcp_cwnd_validate(struct sock *sk, bool is_cwnd_limited)
@@ -1486,14 +1521,23 @@ static void tcp_cwnd_validate(struct sock *sk, bool is_cwnd_limited)
 	if (tcp_is_cwnd_limited(sk)) {
 		/* Network is feed fully. */
 		tp->snd_cwnd_used = 0;
+		#if DERAND_ENABLE
+		tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 38);
+		#else
 		tp->snd_cwnd_stamp = tcp_time_stamp;
+		#endif
 	} else {
 		/* Network starves. */
 		if (tp->packets_out > tp->snd_cwnd_used)
 			tp->snd_cwnd_used = tp->packets_out;
 
+		#if DERAND_ENABLE
+		if (sysctl_tcp_slow_start_after_idle &&
+		    (s32)(derand_tcp_time_stamp(sk, 39) - tp->snd_cwnd_stamp) >= inet_csk(sk)->icsk_rto)
+		#else
 		if (sysctl_tcp_slow_start_after_idle &&
 		    (s32)(tcp_time_stamp - tp->snd_cwnd_stamp) >= inet_csk(sk)->icsk_rto)
+		#endif
 			tcp_cwnd_application_limited(sk);
 	}
 }
@@ -1779,7 +1823,11 @@ static bool tcp_tso_should_defer(struct sock *sk, struct sk_buff *skb,
 	/* Avoid bursty behavior by allowing defer
 	 * only if the last write was recent.
 	 */
+	#if DERAND_ENABLE
+	if ((s32)(derand_tcp_time_stamp(sk, 40) - tp->lsndtime) > 0)
+	#else
 	if ((s32)(tcp_time_stamp - tp->lsndtime) > 0)
+	#endif
 		goto send_now;
 
 	in_flight = tcp_packets_in_flight(tp);
@@ -1822,7 +1870,11 @@ static bool tcp_tso_should_defer(struct sock *sk, struct sk_buff *skb,
 	}
 
 	head = tcp_write_queue_head(sk);
+	#if DERAND_ENABLE
+	derand_skb_mstamp_get(sk, &now, 3);
+	#else
 	skb_mstamp_get(&now);
+	#endif
 	age = skb_mstamp_us_delta(&now, &head->skb_mstamp);
 	/* If next ACK is likely to come too late (half srtt), do not defer */
 	if (age < (tp->srtt_us >> 4))
@@ -1848,7 +1900,11 @@ static inline void tcp_mtu_check_reprobe(struct sock *sk)
 	s32 delta;
 
 	interval = net->ipv4.sysctl_tcp_probe_interval;
+	#if DERAND_ENABLE
+	delta = derand_tcp_time_stamp(sk, 41) - icsk->icsk_mtup.probe_timestamp;
+	#else
 	delta = tcp_time_stamp - icsk->icsk_mtup.probe_timestamp;
+	#endif
 	if (unlikely(delta >= interval * HZ)) {
 		int mss = tcp_current_mss(sk);
 
@@ -1860,7 +1916,11 @@ static inline void tcp_mtu_check_reprobe(struct sock *sk)
 		icsk->icsk_mtup.search_low = tcp_mss_to_mtu(sk, mss);
 
 		/* Update probe time stamp */
+		#if DERAND_ENABLE
+		icsk->icsk_mtup.probe_timestamp = derand_tcp_time_stamp(sk, 42);
+		#else
 		icsk->icsk_mtup.probe_timestamp = tcp_time_stamp;
+		#endif
 	}
 }
 
@@ -2059,7 +2119,11 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 
 		if (unlikely(tp->repair) && tp->repair_queue == TCP_SEND_QUEUE) {
 			/* "skb_mstamp" is used as a start point for the retransmit timer */
+			#if DERAND_ENABLE
+			derand_skb_mstamp_get(sk, &skb->skb_mstamp, 4);
+			#else
 			skb_mstamp_get(&skb->skb_mstamp);
+			#endif
 			goto repair; /* Skip network transmission */
 		}
 
@@ -2112,14 +2176,23 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		limit = max(2 * skb->truesize, sk->sk_pacing_rate >> 10);
 		limit = min_t(u32, limit, sysctl_tcp_limit_output_bytes);
 
-		if (atomic_read(&sk->sk_wmem_alloc) > limit) {
+		#if DERAND_ENABLE
+		if (derand_effect_bool(sk, 12, atomic_read(&sk->sk_wmem_alloc) > limit))
+		#else
+		if (atomic_read(&sk->sk_wmem_alloc) > limit) 
+		#endif
+		{
 			set_bit(TSQ_THROTTLED, &tp->tsq_flags);
 			/* It is possible TX completion already happened
 			 * before we set TSQ_THROTTLED, so we must
 			 * test again the condition.
 			 */
 			smp_mb__after_atomic();
+			#if DERAND_ENABLE
+			if (derand_effect_bool(sk, 13, atomic_read(&sk->sk_wmem_alloc) > limit))
+			#else
 			if (atomic_read(&sk->sk_wmem_alloc) > limit)
+			#endif
 				break;
 		}
 
@@ -2199,10 +2272,18 @@ bool tcp_schedule_loss_probe(struct sock *sk)
 	timeout = max_t(u32, timeout, msecs_to_jiffies(10));
 
 	/* If RTO is shorter, just schedule TLP in its place. */
+	#if DERAND_ENABLE
+	tlp_time_stamp = derand_tcp_time_stamp(sk, 43) + timeout;
+	#else
 	tlp_time_stamp = tcp_time_stamp + timeout;
+	#endif
 	rto_time_stamp = (u32)inet_csk(sk)->icsk_timeout;
 	if ((s32)(tlp_time_stamp - rto_time_stamp) > 0) {
+		#if DERAND_ENABLE
+		s32 delta = rto_time_stamp - derand_tcp_time_stamp(sk, 44);
+		#else
 		s32 delta = rto_time_stamp - tcp_time_stamp;
+		#endif
 		if (delta > 0)
 			timeout = delta;
 	}
@@ -2398,7 +2479,11 @@ u32 __tcp_select_window(struct sock *sk)
 	if (free_space < (full_space >> 1)) {
 		icsk->icsk_ack.quick = 0;
 
+		#if DERAND_ENABLE
+		if (derand_tcp_under_memory_pressure(sk))
+		#else
 		if (tcp_under_memory_pressure(sk))
+		#endif
 			tp->rcv_ssthresh = min(tp->rcv_ssthresh,
 					       4U * tp->advmss);
 
@@ -2579,9 +2664,17 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	/* Do not sent more than we queued. 1/4 is reserved for possible
 	 * copying overhead: fragmentation, tunneling, mangling etc.
 	 */
+	#if DERAND_ENABLE
+	if (derand_effect_bool(sk, 14, 
+		atomic_read(&sk->sk_wmem_alloc) >
+	    min_t(u32, sk->sk_wmem_queued + (sk->sk_wmem_queued >> 2),
+		  sk->sk_sndbuf))
+	   )
+	#else
 	if (atomic_read(&sk->sk_wmem_alloc) >
 	    min_t(u32, sk->sk_wmem_queued + (sk->sk_wmem_queued >> 2),
 		  sk->sk_sndbuf))
+	#endif
 		return -EAGAIN;
 
 	if (skb_still_in_host_queue(sk, skb))
@@ -2640,7 +2733,11 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 		     skb_headroom(skb) >= 0xFFFF)) {
 		struct sk_buff *nskb;
 
+		#if DERAND_ENABLE
+		derand_skb_mstamp_get(sk, &skb->skb_mstamp, 5);
+		#else
 		skb_mstamp_get(&skb->skb_mstamp);
+		#endif
 		nskb = __pskb_copy(skb, MAX_TCP_HEADER, GFP_ATOMIC);
 		err = nskb ? tcp_transmit_skb(sk, nskb, 0, GFP_ATOMIC) :
 			     -ENOBUFS;
@@ -2850,7 +2947,11 @@ void tcp_send_fin(struct sock *sk)
 	 * Note: in the latter case, FIN packet will be sent after a timeout,
 	 * as TCP stack thinks it has already been transmitted.
 	 */
+	#if DERAND_ENABLE
+	if (tskb && (tcp_send_head(sk) || derand_tcp_under_memory_pressure(sk))) {
+	#else
 	if (tskb && (tcp_send_head(sk) || tcp_under_memory_pressure(sk))) {
+	#endif
 coalesce:
 		TCP_SKB_CB(tskb)->tcp_flags |= TCPHDR_FIN;
 		TCP_SKB_CB(tskb)->end_seq++;
@@ -2902,7 +3003,11 @@ void tcp_send_active_reset(struct sock *sk, gfp_t priority)
 	skb_reserve(skb, MAX_TCP_HEADER);
 	tcp_init_nondata_skb(skb, tcp_acceptable_seq(sk),
 			     TCPHDR_ACK | TCPHDR_RST);
+	#if DERAND_ENABLE
+	derand_skb_mstamp_get(sk, &skb->skb_mstamp, 6);
+	#else
 	skb_mstamp_get(&skb->skb_mstamp);
+	#endif
 	/* Send it off. */
 	if (tcp_transmit_skb(sk, skb, 0, priority))
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPABORTFAILED);
@@ -3131,7 +3236,11 @@ static void tcp_connect_init(struct sock *sk)
 	if (likely(!tp->repair))
 		tp->rcv_nxt = 0;
 	else
+		#if DERAND_ENABLE
+		tp->rcv_tstamp = derand_tcp_time_stamp(sk, 45); // should be irrelavent: this is before client send SYN
+		#else
 		tp->rcv_tstamp = tcp_time_stamp;
+		#endif
 	tp->rcv_wup = tp->rcv_nxt;
 	tp->copied_seq = tp->rcv_nxt;
 
@@ -3173,8 +3282,13 @@ static int tcp_send_syn_data(struct sock *sk, struct sk_buff *syn)
 	tcp_fastopen_cache_get(sk, &tp->rx_opt.mss_clamp, &fo->cookie,
 			       &syn_loss, &last_syn_loss);
 	/* Recurring FO SYN losses: revert to regular handshake temporarily */
+	#if DERAND_ENABLE // should be irrelavent: this is before client send SYN, and for fastopen
+	if (syn_loss > 1 &&
+	    time_before(derand_jiffies(sk, 5), last_syn_loss + (60*HZ << syn_loss))) {
+	#else
 	if (syn_loss > 1 &&
 	    time_before(jiffies, last_syn_loss + (60*HZ << syn_loss))) {
+	#endif
 		fo->cookie.len = -1;
 		goto fallback;
 	}
@@ -3273,7 +3387,11 @@ int tcp_connect(struct sock *sk)
 		return -ENOBUFS;
 
 	tcp_init_nondata_skb(buff, tp->write_seq++, TCPHDR_SYN);
+	#if DERAND_ENABLE
+	tp->retrans_stamp = derand_tcp_time_stamp(sk, 46); // should be irrelavent: this is before client send SYN
+	#else
 	tp->retrans_stamp = tcp_time_stamp;
+	#endif
 	tcp_connect_queue_skb(sk, buff);
 	tcp_ecn_send_syn(sk, buff);
 
@@ -3335,15 +3453,24 @@ void tcp_send_delayed_ack(struct sock *sk)
 	}
 
 	/* Stay within the limit we were given */
+	#if DERAND_ENABLE
+	timeout = derand_jiffies(sk, 6) + ato;
+	#else
 	timeout = jiffies + ato;
+	#endif
 
 	/* Use new timeout only if there wasn't a older one earlier. */
 	if (icsk->icsk_ack.pending & ICSK_ACK_TIMER) {
 		/* If delack timer was blocked or is about to expire,
 		 * send ACK now.
 		 */
+		#if DERAND_ENABLE
+		if (icsk->icsk_ack.blocked ||
+		    time_before_eq(icsk->icsk_ack.timeout, derand_jiffies(sk, 7) + (ato >> 2))) {
+		#else
 		if (icsk->icsk_ack.blocked ||
 		    time_before_eq(icsk->icsk_ack.timeout, jiffies + (ato >> 2))) {
+		#endif
 			tcp_send_ack(sk);
 			return;
 		}
@@ -3393,7 +3520,11 @@ void tcp_send_ack(struct sock *sk)
 	skb_set_tcp_pure_ack(buff);
 
 	/* Send it off, this clears delayed acks for us. */
+	#if DERAND_ENABLE
+	derand_skb_mstamp_get(sk, &buff->skb_mstamp, 7);
+	#else
 	skb_mstamp_get(&buff->skb_mstamp);
+	#endif
 	tcp_transmit_skb(sk, buff, 0, sk_gfp_atomic(sk, GFP_ATOMIC));
 }
 EXPORT_SYMBOL_GPL(tcp_send_ack);
@@ -3426,7 +3557,11 @@ static int tcp_xmit_probe_skb(struct sock *sk, int urgent, int mib)
 	 * send it.
 	 */
 	tcp_init_nondata_skb(skb, tp->snd_una - !urgent, TCPHDR_ACK);
+	#if DERAND_ENABLE
+	derand_skb_mstamp_get(sk, &skb->skb_mstamp, 8);
+	#else
 	skb_mstamp_get(&skb->skb_mstamp);
+	#endif
 	NET_INC_STATS(sock_net(sk), mib);
 	return tcp_transmit_skb(sk, skb, 0, GFP_ATOMIC);
 }

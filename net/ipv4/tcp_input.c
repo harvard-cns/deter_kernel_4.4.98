@@ -75,6 +75,8 @@
 #include <linux/ipsec.h>
 #include <asm/unaligned.h>
 #include <linux/errqueue.h>
+/* DERAND */
+#include <net/derand_ops.h>
 
 int sysctl_tcp_timestamps __read_mostly = 1;
 int sysctl_tcp_window_scaling __read_mostly = 1;
@@ -363,7 +365,11 @@ static void tcp_grow_window(struct sock *sk, const struct sk_buff *skb)
 	/* Check #1 */
 	if (tp->rcv_ssthresh < tp->window_clamp &&
 	    (int)tp->rcv_ssthresh < tcp_space(sk) &&
+		#if DERAND_ENABLE
+	    !derand_tcp_under_memory_pressure(sk)) {
+		#else
 	    !tcp_under_memory_pressure(sk)) {
+		#endif
 		int incr;
 
 		/* Check #2. Increase window, if skb with such overhead
@@ -416,7 +422,11 @@ void tcp_init_buffer_space(struct sock *sk)
 		tcp_sndbuf_expand(sk);
 
 	tp->rcvq_space.space = tp->rcv_wnd;
+	#if DERAND_ENABLE
+	tp->rcvq_space.time = derand_tcp_time_stamp(sk, 6);
+	#else
 	tp->rcvq_space.time = tcp_time_stamp;
+	#endif
 	tp->rcvq_space.seq = tp->copied_seq;
 
 	maxwin = tcp_full_space(sk);
@@ -437,7 +447,11 @@ void tcp_init_buffer_space(struct sock *sk)
 		tp->window_clamp = max(2 * tp->advmss, maxwin - tp->advmss);
 
 	tp->rcv_ssthresh = min(tp->rcv_ssthresh, tp->window_clamp);
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 7);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 }
 
 /* 5. Recalculate window clamp after socket hit its memory bounds. */
@@ -450,8 +464,16 @@ static void tcp_clamp_window(struct sock *sk)
 
 	if (sk->sk_rcvbuf < sysctl_tcp_rmem[2] &&
 	    !(sk->sk_userlocks & SOCK_RCVBUF_LOCK) &&
+		#if DERAND_ENABLE
+	    !derand_tcp_under_memory_pressure(sk) &&
+		#else
 	    !tcp_under_memory_pressure(sk) &&
+		#endif
+		#if DERAND_ENABLE
+	    derand_sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)) {
+		#else
 	    sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)) {
+		#endif
 		sk->sk_rcvbuf = min(atomic_read(&sk->sk_rmem_alloc),
 				    sysctl_tcp_rmem[2]);
 	}
@@ -532,11 +554,19 @@ static inline void tcp_rcv_rtt_measure(struct tcp_sock *tp)
 		goto new_measure;
 	if (before(tp->rcv_nxt, tp->rcv_rtt_est.seq))
 		return;
+	#if DERAND_ENABLE
+	tcp_rcv_rtt_update(tp, derand_tcp_time_stamp((struct sock*)tp, 8) - tp->rcv_rtt_est.time, 1);
+	#else
 	tcp_rcv_rtt_update(tp, tcp_time_stamp - tp->rcv_rtt_est.time, 1);
+	#endif
 
 new_measure:
 	tp->rcv_rtt_est.seq = tp->rcv_nxt + tp->rcv_wnd;
+	#if DERAND_ENABLE
+	tp->rcv_rtt_est.time = derand_tcp_time_stamp((struct sock*)tp, 9);
+	#else
 	tp->rcv_rtt_est.time = tcp_time_stamp;
+	#endif
 }
 
 static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
@@ -546,7 +576,11 @@ static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
 	if (tp->rx_opt.rcv_tsecr &&
 	    (TCP_SKB_CB(skb)->end_seq -
 	     TCP_SKB_CB(skb)->seq >= inet_csk(sk)->icsk_ack.rcv_mss))
+		#if DERAND_ENABLE
+		tcp_rcv_rtt_update(tp, derand_tcp_time_stamp(sk, 10) - tp->rx_opt.rcv_tsecr, 0);
+		#else
 		tcp_rcv_rtt_update(tp, tcp_time_stamp - tp->rx_opt.rcv_tsecr, 0);
+		#endif
 }
 
 /*
@@ -559,7 +593,11 @@ void tcp_rcv_space_adjust(struct sock *sk)
 	int time;
 	int copied;
 
+	#if DERAND_ENABLE
+	time = derand_tcp_time_stamp(sk, 11) - tp->rcvq_space.time;
+	#else
 	time = tcp_time_stamp - tp->rcvq_space.time;
+	#endif
 	if (time < (tp->rcv_rtt_est.rtt >> 3) || tp->rcv_rtt_est.rtt == 0)
 		return;
 
@@ -616,7 +654,11 @@ void tcp_rcv_space_adjust(struct sock *sk)
 
 new_measure:
 	tp->rcvq_space.seq = tp->copied_seq;
+	#if DERAND_ENABLE
+	tp->rcvq_space.time = derand_tcp_time_stamp(sk, 12);
+	#else
 	tp->rcvq_space.time = tcp_time_stamp;
+	#endif
 }
 
 /* There is something which you must keep in mind when you analyze the
@@ -641,7 +683,11 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 
 	tcp_rcv_rtt_measure(tp);
 
+	#if DERAND_ENABLE
+	now = derand_tcp_time_stamp(sk, 13);
+	#else
 	now = tcp_time_stamp;
+	#endif
 
 	if (!icsk->icsk_ack.ato) {
 		/* The _first_ data packet received, initialize
@@ -1889,7 +1935,11 @@ void tcp_enter_loss(struct sock *sk)
 	}
 	tp->snd_cwnd	   = 1;
 	tp->snd_cwnd_cnt   = 0;
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 14);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 
 	tp->retrans_out = 0;
 	tp->lost_out = 0;
@@ -2005,7 +2055,11 @@ static bool tcp_pause_early_retransmit(struct sock *sk, int flag)
 	delay = max(usecs_to_jiffies(tp->srtt_us >> 5),
 		    msecs_to_jiffies(2));
 
+	#if DERAND_ENABLE
+	if (!time_after(inet_csk(sk)->icsk_timeout, (derand_jiffies(sk, 2) + delay)))
+	#else
 	if (!time_after(inet_csk(sk)->icsk_timeout, (jiffies + delay)))
+	#endif
 		return false;
 
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_EARLY_RETRANS, delay,
@@ -2250,7 +2304,11 @@ static inline void tcp_moderate_cwnd(struct tcp_sock *tp)
 {
 	tp->snd_cwnd = min(tp->snd_cwnd,
 			   tcp_packets_in_flight(tp) + tcp_max_burst(tp));
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp((struct sock*)tp, 15);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 }
 
 static bool tcp_tsopt_ecr_before(const struct tcp_sock *tp, u32 when)
@@ -2369,7 +2427,11 @@ static void tcp_undo_cwnd_reduction(struct sock *sk, bool unmark_loss)
 	} else {
 		tp->snd_cwnd = max(tp->snd_cwnd, tp->snd_ssthresh);
 	}
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 16);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 	tp->undo_marker = 0;
 }
 
@@ -2506,7 +2568,11 @@ static inline void tcp_end_cwnd_reduction(struct sock *sk)
 	if (tp->snd_ssthresh < TCP_INFINITE_SSTHRESH &&
 	    (inet_csk(sk)->icsk_ca_state == TCP_CA_CWR || tp->undo_marker)) {
 		tp->snd_cwnd = tp->snd_ssthresh;
+		#if DERAND_ENABLE
+		tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 17);
+		#else
 		tp->snd_cwnd_stamp = tcp_time_stamp;
+		#endif
 	}
 	tcp_ca_event(sk, CA_EVENT_COMPLETE_CWR);
 }
@@ -2578,7 +2644,11 @@ static void tcp_mtup_probe_success(struct sock *sk)
 		       tcp_mss_to_mtu(sk, tp->mss_cache) /
 		       icsk->icsk_mtup.probe_size;
 	tp->snd_cwnd_cnt = 0;
+	#if DERAND_ENABLE
+	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 18);
+	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 	tp->snd_ssthresh = tcp_current_ssthresh(sk);
 
 	icsk->icsk_mtup.search_low = icsk->icsk_mtup.probe_size;
@@ -2896,7 +2966,11 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
  */
 static void tcp_update_rtt_min(struct sock *sk, u32 rtt_us)
 {
+	#if DERAND_ENABLE
+	const u32 now = derand_tcp_time_stamp(sk, 19), wlen = sysctl_tcp_min_rtt_wlen * HZ;
+	#else
 	const u32 now = tcp_time_stamp, wlen = sysctl_tcp_min_rtt_wlen * HZ;
+	#endif
 	struct rtt_meas *m = tcp_sk(sk)->rtt_min;
 	struct rtt_meas rttm = { .rtt = (rtt_us ? : 1), .ts = now };
 	u32 elapsed;
@@ -2958,8 +3032,13 @@ static inline bool tcp_ack_update_rtt(struct sock *sk, const int flag,
 	 */
 	if (seq_rtt_us < 0 && tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
 	    flag & FLAG_ACKED)
+		#if DERAND_ENABLE
+		seq_rtt_us = ca_rtt_us = jiffies_to_usecs(derand_tcp_time_stamp(sk, 20) -
+							  tp->rx_opt.rcv_tsecr);
+		#else
 		seq_rtt_us = ca_rtt_us = jiffies_to_usecs(tcp_time_stamp -
 							  tp->rx_opt.rcv_tsecr);
+		#endif
 	if (seq_rtt_us < 0)
 		return false;
 
@@ -2984,7 +3063,11 @@ void tcp_synack_rtt_meas(struct sock *sk, struct request_sock *req)
 	if (req && !req->num_retrans && tcp_rsk(req)->snt_synack.v64) {
 		struct skb_mstamp now;
 
+		#if DERAND_ENABLE
+		derand_skb_mstamp_get(sk, &now, 0);
+		#else
 		skb_mstamp_get(&now);
+		#endif
 		rtt_us = skb_mstamp_us_delta(&now, &tcp_rsk(req)->snt_synack);
 	}
 
@@ -2997,7 +3080,11 @@ static void tcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 
 	icsk->icsk_ca_ops->cong_avoid(sk, ack, acked);
+	#if DERAND_ENABLE
+	tcp_sk(sk)->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 21);
+	#else
 	tcp_sk(sk)->snd_cwnd_stamp = tcp_time_stamp;
+	#endif
 }
 
 /* Restart timer after forward progress on connection.
@@ -3024,7 +3111,11 @@ void tcp_rearm_rto(struct sock *sk)
 			struct sk_buff *skb = tcp_write_queue_head(sk);
 			const u32 rto_time_stamp =
 				tcp_skb_timestamp(skb) + rto;
+			#if DERAND_ENABLE
+			s32 delta = (s32)(rto_time_stamp - derand_tcp_time_stamp(sk, 22));
+			#else
 			s32 delta = (s32)(rto_time_stamp - tcp_time_stamp);
+			#endif
 			/* delta may not be positive if the socket is locked
 			 * when the retrans timer fires and is rescheduled.
 			 */
@@ -3193,7 +3284,11 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 	if (skb && (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_ACKED))
 		flag |= FLAG_SACK_RENEGING;
 
+	#if DERAND_ENABLE
+	derand_skb_mstamp_get(sk, &now, 1);
+	#else
 	skb_mstamp_get(&now);
+	#endif
 	if (likely(first_ackt.v64) && !(flag & FLAG_RETRANS_DATA_ACKED)) {
 		seq_rtt_us = skb_mstamp_us_delta(&now, &first_ackt);
 		ca_rtt_us = skb_mstamp_us_delta(&now, &last_ackt);
@@ -3392,6 +3487,9 @@ static int tcp_ack_update_window(struct sock *sk, const struct sk_buff *skb, u32
 static bool __tcp_oow_rate_limited(struct net *net, int mib_idx,
 				   u32 *last_oow_ack_time)
 {
+	#if DERAND_ENABLE
+	printk("[DERAND] Unexpected! enter __tcp_oow_rate_limited()\n");
+	#endif
 	if (*last_oow_ack_time) {
 		s32 elapsed = (s32)(tcp_time_stamp - *last_oow_ack_time);
 
@@ -3440,7 +3538,11 @@ static void tcp_send_challenge_ack(struct sock *sk, const struct sk_buff *skb)
 		return;
 
 	/* Then check host-wide RFC 5961 rate limit. */
+	#if DERAND_ENABLE
+	now = derand_jiffies(sk, 3) / HZ;
+	#else
 	now = jiffies / HZ;
+	#endif
 	if (now != challenge_timestamp) {
 		u32 half = (sysctl_tcp_challenge_ack_limit + 1) >> 1;
 
@@ -3614,7 +3716,11 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	 */
 	sk->sk_err_soft = 0;
 	icsk->icsk_probes_out = 0;
+	#if DERAND_ENABLE
+	tp->rcv_tstamp = derand_tcp_time_stamp(sk, 23);
+	#else
 	tp->rcv_tstamp = tcp_time_stamp;
+	#endif
 	if (!prior_packets)
 		goto no_queue;
 
@@ -4858,7 +4964,11 @@ static int tcp_prune_queue(struct sock *sk)
 
 	if (atomic_read(&sk->sk_rmem_alloc) >= sk->sk_rcvbuf)
 		tcp_clamp_window(sk);
+	#if DERAND_ENABLE
+	else if (derand_tcp_under_memory_pressure(sk))
+	#else
 	else if (tcp_under_memory_pressure(sk))
+	#endif
 		tp->rcv_ssthresh = min(tp->rcv_ssthresh, 4U * tp->advmss);
 
 	tcp_collapse_ofo_queue(sk);
@@ -4902,11 +5012,19 @@ static bool tcp_should_expand_sndbuf(const struct sock *sk)
 		return false;
 
 	/* If we are under global TCP memory pressure, do not expand.  */
+	#if DERAND_ENABLE
+	if (derand_tcp_under_memory_pressure(sk))
+	#else
 	if (tcp_under_memory_pressure(sk))
+	#endif
 		return false;
 
 	/* If we are under soft global TCP memory pressure, do not expand.  */
+	#if DERAND_ENABLE
+	if (derand_sk_memory_allocated(sk) >= sk_prot_mem_limits(sk, 0))
+	#else
 	if (sk_memory_allocated(sk) >= sk_prot_mem_limits(sk, 0))
+	#endif
 		return false;
 
 	/* If we filled the congestion window, do not expand.  */
@@ -4928,7 +5046,11 @@ static void tcp_new_space(struct sock *sk)
 
 	if (tcp_should_expand_sndbuf(sk)) {
 		tcp_sndbuf_expand(sk);
+		#if DERAND_ENABLE
+		tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 24);
+		#else
 		tp->snd_cwnd_stamp = tcp_time_stamp;
+		#endif
 	}
 
 	sk->sk_write_space(sk);
@@ -5432,7 +5554,11 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
 	tcp_set_state(sk, TCP_ESTABLISHED);
+	#if DERAND_ENABLE
+	icsk->icsk_ack.lrcvtime = derand_tcp_time_stamp(sk, 25);
+	#else
 	icsk->icsk_ack.lrcvtime = tcp_time_stamp;
+	#endif
 
 	if (skb) {
 		icsk->icsk_af_ops->sk_rx_dst_set(sk, skb);
@@ -5449,7 +5575,11 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	/* Prevent spurious tcp_cwnd_restart() on first data
 	 * packet.
 	 */
+	#if DERAND_ENABLE
+	tp->lsndtime = derand_tcp_time_stamp(sk, 26);
+	#else
 	tp->lsndtime = tcp_time_stamp;
+	#endif
 
 	tcp_init_buffer_space(sk);
 
@@ -5461,6 +5591,9 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	else
 		tp->pred_flags = 0;
 
+	#if DERAND_ENABLE
+	derand_record_ops.client_recorder_create(sk);
+	#endif /* DERAND_ENABLE */
 	if (!sock_flag(sk, SOCK_DEAD)) {
 		sk->sk_state_change(sk);
 		sk_wake_async(sk, SOCK_WAKE_IO, POLL_OUT);
@@ -5546,9 +5679,15 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 		    after(TCP_SKB_CB(skb)->ack_seq, tp->snd_nxt))
 			goto reset_and_undo;
 
+		#if DERAND_ENABLE
+		if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
+		    !between(tp->rx_opt.rcv_tsecr, tp->retrans_stamp,
+			     derand_tcp_time_stamp(sk, 27))) {
+		#else
 		if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
 		    !between(tp->rx_opt.rcv_tsecr, tp->retrans_stamp,
 			     tcp_time_stamp)) {
+		#endif
 			NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_PAWSACTIVEREJECTED);
 			goto reset_and_undo;
 		}
@@ -5886,10 +6025,17 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		tcp_update_pacing_rate(sk);
 
 		/* Prevent spurious tcp_cwnd_restart() on first data packet */
+		#if DERAND_ENABLE
+		tp->lsndtime = derand_tcp_time_stamp(sk, 28);
+		#else
 		tp->lsndtime = tcp_time_stamp;
+		#endif
 
 		tcp_initialize_rcv_mss(sk);
 		tcp_fast_path_on(tp);
+		#if DERAND_ENABLE
+		derand_record_ops.server_recorder_create(sk);
+		#endif
 		break;
 
 	case TCP_FIN_WAIT1: {

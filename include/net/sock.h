@@ -68,6 +68,8 @@
 #include <net/checksum.h>
 #include <net/tcp_states.h>
 #include <linux/net_tstamp.h>
+/* DERAND */
+#include <net/derand.h>
 
 struct cgroup;
 struct cgroup_subsys;
@@ -459,6 +461,12 @@ struct sock {
 	int			(*sk_backlog_rcv)(struct sock *sk,
 						  struct sk_buff *skb);
 	void                    (*sk_destruct)(struct sock *sk);
+
+#if DERAND_ENABLE
+/* DERAND related information */
+	void *recorder;
+	void *replayer;
+#endif
 };
 
 #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))
@@ -842,11 +850,29 @@ static inline bool sk_rcvqueues_full(const struct sock *sk, unsigned int limit)
 	return qsize > limit;
 }
 
+#if DERAND_ENABLE
+/* A effect of type bool */
+extern void (*derand_record_effect_bool)(const struct sock *sk, int loc, bool v);
+
+// TODO check if in replay mode below. Replay should also run exp, because exp may have side effect
+#define derand_effect_bool(sk, loc, exp)\
+	({ \
+		bool ret = (exp); \
+	 	if (sk->recorder && derand_record_effect_bool) \
+	 		derand_record_effect_bool(sk, loc, ret); \
+	 	ret; \
+	})
+#endif
+
 /* The per-socket spinlock must be held here. */
 static inline __must_check int sk_add_backlog(struct sock *sk, struct sk_buff *skb,
 					      unsigned int limit)
 {
+	#if DERAND_ENABLE
+	if (derand_effect_bool(sk, 0, sk_rcvqueues_full(sk, limit)))
+	#else
 	if (sk_rcvqueues_full(sk, limit))
+	#endif
 		return -ENOBUFS;
 
 	/*
@@ -925,6 +951,21 @@ static inline void sock_rps_reset_rxhash(struct sock *sk)
 		__rc;							\
 	})
 
+#if DERAND_ENABLE
+#define derand_sk_wait_event(__sk, __timeo, __condition, sc_id)			\
+	({	int __rc;						\
+		derand_release_sock(__sk, sc_id);					\
+		__rc = __condition;					\
+		if (!__rc) {						\
+			*(__timeo) = schedule_timeout(*(__timeo));	\
+		}							\
+		sched_annotate_sleep();						\
+		derand_lock_sock(__sk, sc_id);					\
+		__rc = __condition;					\
+		__rc;							\
+	})
+#endif /* DERAND_ENABLE */
+
 int sk_stream_wait_connect(struct sock *sk, long *timeo_p);
 int sk_stream_wait_memory(struct sock *sk, long *timeo_p);
 void sk_stream_wait_close(struct sock *sk, long timeo_p);
@@ -934,6 +975,10 @@ void sk_set_memalloc(struct sock *sk);
 void sk_clear_memalloc(struct sock *sk);
 
 int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb);
+#if DERAND_ENABLE
+int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id);
+int derand_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id);
+#endif /* DERAND_ENABLE */
 
 struct request_sock_ops;
 struct timewait_sock_ops;
@@ -1494,6 +1539,17 @@ static inline void lock_sock(struct sock *sk)
 }
 
 void release_sock(struct sock *sk);
+
+#if DERAND_ENABLE
+void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id);
+
+static inline void derand_lock_sock(struct sock *sk, u32 sc_id)
+{
+	derand_lock_sock_nested(sk, 0, sc_id);
+}
+
+void derand_release_sock(struct sock *sk, u32 sc_id);
+#endif /* DERAND_ENABLE */
 
 /* BH context may only use the following locking interface. */
 #define bh_lock_sock(__sk)	spin_lock(&((__sk)->sk_lock.slock))
@@ -2110,7 +2166,11 @@ bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag);
  */
 static inline bool sock_writeable(const struct sock *sk)
 {
+	#if DERAND_ENABLE
+	return derand_effect_bool(sk, 1, atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1));
+	#else
 	return atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1);
+	#endif
 }
 
 static inline gfp_t gfp_any(void)

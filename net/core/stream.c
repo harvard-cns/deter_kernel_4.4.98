@@ -19,6 +19,9 @@
 #include <linux/wait.h>
 #include <net/sock.h>
 
+/* DERAND */
+#include <net/derand_ops.h>
+
 /**
  * sk_stream_write_space - stream socket write_space callback.
  * @sk: socket
@@ -176,6 +179,71 @@ do_interrupted:
 	goto out;
 }
 EXPORT_SYMBOL(sk_stream_wait_memory);
+
+#if DERAND_ENABLE
+int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id)
+{
+	int err = 0;
+	long vm_wait = 0;
+	long current_timeo = *timeo_p;
+	bool noblock = (*timeo_p ? false : true);
+	DEFINE_WAIT(wait);
+
+	if (sk_stream_memory_free(sk))
+		current_timeo = vm_wait = (prandom_u32() % (HZ / 5)) + 2;
+
+	while (1) {
+		sk_set_bit(SOCKWQ_ASYNC_NOSPACE, sk);
+
+		prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
+
+		if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
+			goto do_error;
+		if (!*timeo_p) {
+			if (noblock)
+				set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
+			goto do_nonblock;
+		}
+		if (signal_pending(current))
+			goto do_interrupted;
+		sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
+		if (sk_stream_memory_free(sk) && !vm_wait)
+			break;
+
+		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
+		sk->sk_write_pending++;
+		derand_sk_wait_event(sk, &current_timeo, sk->sk_err ||
+						  (sk->sk_shutdown & SEND_SHUTDOWN) ||
+						  (sk_stream_memory_free(sk) &&
+						  !vm_wait), sc_id);
+		sk->sk_write_pending--;
+
+		if (vm_wait) {
+			vm_wait -= current_timeo;
+			current_timeo = *timeo_p;
+			if (current_timeo != MAX_SCHEDULE_TIMEOUT &&
+			    (current_timeo -= vm_wait) < 0)
+				current_timeo = 0;
+			vm_wait = 0;
+		}
+		*timeo_p = current_timeo;
+	}
+out:
+	finish_wait(sk_sleep(sk), &wait);
+	return err;
+
+do_error:
+	err = -EPIPE;
+	goto out;
+do_nonblock:
+	err = -EAGAIN;
+	goto out;
+do_interrupted:
+	err = sock_intr_errno(*timeo_p);
+	goto out;
+}
+EXPORT_SYMBOL(derand_sk_stream_wait_memory);
+#endif /* DERAND_ENABLE */
 
 int sk_stream_error(struct sock *sk, int flags, int err)
 {
