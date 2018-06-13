@@ -22,3 +22,4 @@ debian.master
 System.map
 vmlinux
 vmlinux-gdb.py
+include/generated
