@@ -30,26 +30,44 @@ struct derand_record_ops{
 	/* A new event that a sockcall acquire a spinlock. sc_id: sockcall ID */
 	void (*sockcall_lock)(struct sock *sk, u32 sc_id);
 
+	/* For replay: hook before acquiring lock */
+	void (*sockcall_before_lock)(struct sock *sk, u32 sc_id);
+
 	/* A new packet */
 	void (*incoming_pkt)(struct sock *sk);
+
+	/* For replay: hook before acquiring lock for incoming_pkt */
+	void (*incoming_pkt_before_lock)(struct sock *sk);
 
 	/* A write timer */
 	void (*write_timer)(struct sock *sk);
 
+	/* For replay: hook before acquiring lock for write_timer */
+	void (*write_timer_before_lock)(struct sock *sk);
+
 	/* A delayed ack timer */
 	void (*delack_timer)(struct sock* sk);
+
+	/* For replay: hook before acquiring lock for delack_timer */
+	void (*delack_timer_before_lock)(struct sock *sk);
 
 	/* A keepalive timer */
 	void (*keepalive_timer)(struct sock *sk);
 
+	/* For replay: hook before acquiring lock for keepalive_timer */
+	void (*keepalive_timer_before_lock)(struct sock *sk);
+
 	/* A tasklet */
 	void (*tasklet)(struct sock *sk);
+
+	/* For replay: hook before acquiring lock for tasklet*/
+	void (*tasklet_before_lock)(struct sock *sk);
 
 	/* A read to jiffies */
 	void (*read_jiffies)(const struct sock *sk, unsigned long v, int id);
 
 	/* A read to tcp_time_stamp */
-	void (*read_tcp_time_stamp)(const struct sock *sk, u32 v, int id);
+	void (*read_tcp_time_stamp)(const struct sock *sk, unsigned long v, int id);
 
 	/* A call to tcp_under_memory_pressure */
 	void (*tcp_under_memory_pressure)(const struct sock *sk, bool ret);
@@ -86,14 +104,14 @@ static inline unsigned long derand_jiffies(const struct sock *sk, int id){
 
 /* A read to tcp_time_stamp. ID is diff for each location of read in the code */
 static inline u32 derand_tcp_time_stamp(const struct sock *sk, int id){
-	u32 res;
+	unsigned long res;
 	// TODO check if in replay mode
 	
 	// not in replay mode
-	res = (u32)(jiffies);
+	res = jiffies;
 	if (sk->recorder && derand_record_ops.read_tcp_time_stamp)
 		derand_record_ops.read_tcp_time_stamp(sk, res, id);
-	return res;
+	return (u32)res;
 }
 
 extern int tcp_memory_pressure;

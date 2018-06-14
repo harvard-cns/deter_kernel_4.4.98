@@ -2024,6 +2024,7 @@ static void __derand_lock_sock(struct sock *sk, u32 sc_id)
 					TASK_UNINTERRUPTIBLE);
 		spin_unlock_bh(&sk->sk_lock.slock);
 		schedule();
+		derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
 		spin_lock_bh(&sk->sk_lock.slock);
 		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
 		if (!sock_owned_by_user(sk))
@@ -2102,6 +2103,7 @@ static void __derand_release_sock(struct sock *sk, u32 sc_id)
 			skb = next;
 		} while (skb != NULL);
 
+		derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
 		bh_lock_sock(sk);
 		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
 	} while ((skb = sk->sk_backlog.head) != NULL);
@@ -2599,6 +2601,7 @@ EXPORT_SYMBOL(lock_sock_nested);
 void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
 {
 	might_sleep();
+	derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
 	spin_lock_bh(&sk->sk_lock.slock);
 	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
 	if (sk->sk_lock.owned)
@@ -2646,6 +2649,7 @@ void derand_release_sock(struct sock *sk, u32 sc_id)
 	 */
 	mutex_release(&sk->sk_lock.dep_map, 1, _RET_IP_);
 
+	derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
 	spin_lock_bh(&sk->sk_lock.slock);
 	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
 	if (sk->sk_backlog.tail)

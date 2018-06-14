@@ -31,8 +31,18 @@ static void sockcall_lock_default(struct sock *sk, u32 sc_id){
 	return;
 }
 
+/* default function for sockcall_before_lock */
+static void sockcall_before_lock_default(struct sock *sk, u32 sc_id){
+	return;
+}
+
 /* default function for incoming_pkt */
 static void incoming_pkt_default(struct sock *sk){
+	return;
+}
+
+/* default function for incoming_pkt_before_lock */
+static void incoming_pkt_before_lock_default(struct sock *sk){
 	return;
 }
 
@@ -41,8 +51,18 @@ static void write_timer_default(struct sock *sk){
 	return;
 }
 
+/* default function for write_timer_before_lock */
+static void write_timer_before_lock_default(struct sock *sk){
+	return;
+}
+
 /* default function for delack_timer */
 static void delack_timer_default(struct sock* sk){
+	return;
+}
+
+/* default function for delack_timer_before_lock */
+static void delack_timer_before_lock_default(struct sock* sk){
 	return;
 }
 
@@ -51,8 +71,18 @@ static void keepalive_timer_default(struct sock *sk){
 	return;
 }
 
+/* default function for keepalive_timer_before_lock */
+static void keepalive_timer_before_lock_default(struct sock *sk){
+	return;
+}
+
 /* default function for tasklet */
 void tasklet_default(struct sock *sk){
+	return;
+}
+
+/* default function for tasklet_before_lock */
+void tasklet_before_lock_default(struct sock *sk){
 	return;
 }
 
@@ -66,11 +96,17 @@ struct derand_record_ops derand_record_ops_default = {
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
 	.sockcall_lock = sockcall_lock_default,
+	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,
+	.incoming_pkt_before_lock = incoming_pkt_before_lock_default,
 	.write_timer = write_timer_default,
+	.write_timer_before_lock = write_timer_before_lock_default,
 	.delack_timer = delack_timer_default,
+	.delack_timer_before_lock = delack_timer_before_lock_default,
 	.keepalive_timer = keepalive_timer_default,
+	.keepalive_timer_before_lock = keepalive_timer_before_lock_default,
 	.tasklet = tasklet_default,
+	.tasklet_before_lock = tasklet_before_lock_default,
 	.read_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
 	.tcp_under_memory_pressure = NULL,
@@ -92,11 +128,17 @@ struct derand_record_ops derand_record_ops = {
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
 	.sockcall_lock = sockcall_lock_default,
+	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,
+	.incoming_pkt_before_lock = incoming_pkt_before_lock_default,
 	.write_timer = write_timer_default,
+	.write_timer_before_lock = write_timer_before_lock_default,
 	.delack_timer = delack_timer_default,
+	.delack_timer_before_lock = delack_timer_before_lock_default,
 	.keepalive_timer = keepalive_timer_default,
+	.keepalive_timer_before_lock = keepalive_timer_before_lock_default,
 	.tasklet = tasklet_default,
+	.tasklet_before_lock = tasklet_before_lock_default,
 	.read_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
 	.tcp_under_memory_pressure = NULL,

@@ -294,10 +294,13 @@ static void tcp_delack_timer(unsigned long data)
 {
 	struct sock *sk = (struct sock *)data;
 
+	#if DERAND_ENABLE
+	derand_record_ops.delack_timer_before_lock(sk);
+	#endif
 	bh_lock_sock(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.delack_timer(sk);
-	#endif /* DERAND_ENABLE */
+	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_delack_timer_handler(sk);
 	} else {
@@ -587,10 +590,13 @@ static void tcp_write_timer(unsigned long data)
 {
 	struct sock *sk = (struct sock *)data;
 
+	#if DERAND_ENABLE
+	derand_record_ops.write_timer_before_lock(sk);
+	#endif
 	bh_lock_sock(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.write_timer(sk);
-	#endif /* DERAND_ENABLE */
+	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_write_timer_handler(sk);
 	} else {
@@ -629,11 +635,14 @@ static void tcp_keepalive_timer (unsigned long data)
 	struct tcp_sock *tp = tcp_sk(sk);
 	u32 elapsed;
 
+	#if DERAND_ENABLE
+	derand_record_ops.keepalive_timer_before_lock(sk);
+	#endif
 	/* Only process if socket is not in use. */
 	bh_lock_sock(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.keepalive_timer(sk);
-	#endif /* DERAND_ENABLE */
+	#endif
 	if (sock_owned_by_user(sk)) {
 		/* Try again later. */
 		inet_csk_reset_keepalive_timer (sk, HZ/20);

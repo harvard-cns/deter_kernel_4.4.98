@@ -1696,10 +1696,13 @@ process:
 
 	sk_incoming_cpu_update(sk);
 
+	#if DERAND_ENABLE
+	derand_record_ops.incoming_pkt_before_lock(sk);
+	#endif
 	bh_lock_sock_nested(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.incoming_pkt(sk);
-	#endif /* DERAND_ENABLE */
+	#endif
 	tcp_sk(sk)->segs_in += max_t(u16, 1, skb_shinfo(skb)->gso_segs);
 	ret = 0;
 	if (!sock_owned_by_user(sk)) {

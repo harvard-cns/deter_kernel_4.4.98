@@ -778,7 +778,7 @@ void tcp_tasklet_func(unsigned long data)
 		bh_lock_sock(sk);
 		#if DERAND_ENABLE
 		derand_record_ops.tasklet(sk);
-		#endif /* DERAND_ENABLE */
+		#endif
 
 		if (!sock_owned_by_user(sk)) {
 			tcp_tsq_handler(sk);
@@ -793,6 +793,28 @@ void tcp_tasklet_func(unsigned long data)
 	}
 }
 EXPORT_SYMBOL(tcp_tasklet_func);
+
+#if DERAND_ENABLE
+/* For replay: replacement of tcp_tasklet_func */
+void derand_tcp_tasklet_func(struct sock *sk){
+	struct tcp_sock *tp = tcp_sk(sk);
+	clear_bit(TSQ_THROTTLED, &tp->tsq_flags); // Should be unnecessary, because it only affects whether to schedule tasklet.
+
+	derand_record_ops.tasklet_before_lock(sk);
+	bh_lock_sock(sk);
+	derand_record_ops.tasklet(sk);
+	if (!sock_owned_by_user(sk)) {
+		tcp_tsq_handler(sk);
+	} else {
+		/* defer the work to tcp_release_cb() */
+		set_bit(TCP_TSQ_DEFERRED, &tp->tsq_flags);
+	}
+	bh_unlock_sock(sk);
+	// Here, no need to clear TSQ_QUEUED, because its set is always skipped tcp_wfree
+	// Note: here we do not call sk_free(sk), because every packet has called it in tcp_wfree
+}
+EXPORT_SYMBOL(derand_tcp_tasklet_func);
+#endif /* DERAND_ENABLE */
 
 #define TCP_DEFERRED_ALL ((1UL << TCP_TSQ_DEFERRED) |		\
 			  (1UL << TCP_WRITE_TIMER_DEFERRED) |	\
@@ -879,6 +901,9 @@ void tcp_wfree(struct sk_buff *skb)
 
 	#if DERAND_ENABLE
 	// if in replay mode, skip tasklet schedule, because replay module will issue tasklet
+	// Be careful about the sk_free(sk)
+	//   - in runtime, the packet that triggers tasklet won't call sk_free(sk). Instead, sk_free(sk) is called in tasklet
+	//   - in replay, all packets call sk_free(sk). So we must not call sk_free(sk) in tasklet
 	if (sk->replayer)
 		goto out;
 	#endif
