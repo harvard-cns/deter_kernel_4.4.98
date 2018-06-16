@@ -108,11 +108,17 @@ struct derand_record_ops derand_record_ops_default = {
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
 	.read_jiffies = NULL,
+	.replay_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
+	.replay_tcp_time_stamp = NULL,
 	.tcp_under_memory_pressure = NULL,
+	.replay_tcp_under_memory_pressure = NULL,
 	.sk_under_memory_pressure = NULL,
+	.replay_sk_under_memory_pressure = NULL,
 	.sk_memory_allocated = NULL,
+	.replay_sk_memory_allocated = NULL,
 	.sk_sockets_allocated_read_positive = NULL,
+	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops_default);
@@ -140,16 +146,25 @@ struct derand_record_ops derand_record_ops = {
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
 	.read_jiffies = NULL,
+	.replay_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
+	.replay_tcp_time_stamp = NULL,
 	.tcp_under_memory_pressure = NULL,
+	.replay_tcp_under_memory_pressure = NULL,
 	.sk_under_memory_pressure = NULL,
+	.replay_sk_under_memory_pressure = NULL,
 	.sk_memory_allocated = NULL,
+	.replay_sk_memory_allocated = NULL,
 	.sk_sockets_allocated_read_positive = NULL,
+	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops);
 
 void (*derand_record_effect_bool)(const struct sock *sk, int loc, bool v) = NULL;
 EXPORT_SYMBOL(derand_record_effect_bool);
+
+bool (*derand_replay_effect_bool)(const struct sock *sk, int loc) = NULL;
+EXPORT_SYMBOL(derand_replay_effect_bool);
 
 #endif /* DERAND_ENABLE */

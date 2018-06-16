@@ -853,13 +853,20 @@ static inline bool sk_rcvqueues_full(const struct sock *sk, unsigned int limit)
 #if DERAND_ENABLE
 /* A effect of type bool */
 extern void (*derand_record_effect_bool)(const struct sock *sk, int loc, bool v);
+extern bool (*derand_replay_effect_bool)(const struct sock *sk, int loc);
 
-// TODO check if in replay mode below. Replay should also run exp, because exp may have side effect
+// check if in replay mode below. 
+// [not true] Replay should also run exp, because exp may have side effect
 #define derand_effect_bool(sk, loc, exp)\
 	({ \
-		bool ret = (exp); \
-	 	if (sk->recorder && derand_record_effect_bool) \
-	 		derand_record_effect_bool(sk, loc, ret); \
+	 	bool ret; \
+	 	if (sk->replayer && derand_replay_effect_bool) \
+	 		ret = derand_replay_effect_bool(sk, loc); \
+	 	else { \
+			ret = (exp); \
+			if (sk->recorder && derand_record_effect_bool) \
+				derand_record_effect_bool(sk, loc, ret); \
+	 	} \
 	 	ret; \
 	})
 #endif

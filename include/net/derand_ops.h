@@ -63,26 +63,42 @@ struct derand_record_ops{
 	/* For replay: hook before acquiring lock for tasklet*/
 	void (*tasklet_before_lock)(struct sock *sk);
 
+	/***********************
+	 * shared values
+	 **********************/
 	/* A read to jiffies */
 	void (*read_jiffies)(const struct sock *sk, unsigned long v, int id);
+
+	unsigned long (*replay_jiffies)(const struct sock *sk, int id);
 
 	/* A read to tcp_time_stamp */
 	void (*read_tcp_time_stamp)(const struct sock *sk, unsigned long v, int id);
 
+	unsigned long (*replay_tcp_time_stamp)(const struct sock *sk, int id);
+
 	/* A call to tcp_under_memory_pressure */
 	void (*tcp_under_memory_pressure)(const struct sock *sk, bool ret);
+
+	bool (*replay_tcp_under_memory_pressure)(const struct sock *sk);
 
 	/* A call to sk_under_memory_pressure */
 	void (*sk_under_memory_pressure)(const struct sock *sk, bool ret);
 
+	bool (*replay_sk_under_memory_pressure)(const struct sock *sk);
+
 	/* A call to sk_memory_allocated */
 	void (*sk_memory_allocated)(const struct sock *sk, long ret);
+
+	long (*replay_sk_memory_allocated)(const struct sock *sk);
 
 	/* A call to sk_sockets_allocated_read_positive */
 	void (*sk_sockets_allocated_read_positive)(struct sock *sk, int ret);
 
+	int (*replay_sk_socket_allocated_read_positive)(struct sock *sk);
+
 	/* A call to skb_mstamp_get */
 	void (*skb_mstamp_get)(struct sock *sk, struct skb_mstamp *cl, int loc);
+	// we do not need special replay function for mstamp, because the above one can return value to cl
 
 	/* TODO: We left out orphan socket related things */
 };
@@ -93,7 +109,9 @@ extern struct derand_record_ops derand_record_ops;
 /* A read to jiffies. ID is diff for each location of read in the code */
 static inline unsigned long derand_jiffies(const struct sock *sk, int id){
 	unsigned long res;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_jiffies)
+		return derand_record_ops.replay_jiffies(sk, id);
 
 	// not in replay mode
 	res = jiffies;
@@ -105,7 +123,9 @@ static inline unsigned long derand_jiffies(const struct sock *sk, int id){
 /* A read to tcp_time_stamp. ID is diff for each location of read in the code */
 static inline u32 derand_tcp_time_stamp(const struct sock *sk, int id){
 	unsigned long res;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_tcp_time_stamp)
+		return (u32)derand_record_ops.replay_tcp_time_stamp(sk, id);
 	
 	// not in replay mode
 	res = jiffies;
@@ -128,7 +148,9 @@ static inline bool derand_copied_tcp_under_memory_pressure(const struct sock *sk
 /* A read to tcp_under_memory_pressure */
 static inline bool derand_tcp_under_memory_pressure(const struct sock *sk){
 	bool ret;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_tcp_under_memory_pressure)
+		return derand_record_ops.replay_tcp_under_memory_pressure(sk);
 	
 	// not in replay mode
 	ret = derand_copied_tcp_under_memory_pressure(sk);
@@ -142,7 +164,9 @@ static inline bool derand_tcp_under_memory_pressure(const struct sock *sk){
 /* a read to sk_under_memory_pressure */
 static inline bool derand_sk_under_memory_pressure(const struct sock *sk){
 	bool ret;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_sk_under_memory_pressure)
+		return derand_record_ops.replay_sk_under_memory_pressure(sk);
 	
 	// not in replay mode
 	ret = sk_under_memory_pressure(sk);
@@ -156,7 +180,9 @@ static inline bool derand_sk_under_memory_pressure(const struct sock *sk){
 /* A call to sk_memory_allocated */
 static inline long derand_sk_memory_allocated(const struct sock *sk){
 	long ret;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_sk_memory_allocated)
+		return derand_record_ops.replay_sk_memory_allocated(sk);
 
 	// not in replay mode
 	ret = sk_memory_allocated(sk);
@@ -170,7 +196,9 @@ static inline long derand_sk_memory_allocated(const struct sock *sk){
 /* A call to sk_sockets_allocated_read_positive */
 static inline int derand_sk_sockets_allocated_read_positive(struct sock *sk){
 	int ret;
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.replay_sk_socket_allocated_read_positive)
+		return derand_record_ops.replay_sk_socket_allocated_read_positive(sk);
 
 	// not in replay mode
 	ret = sk_sockets_allocated_read_positive(sk);
@@ -183,7 +211,11 @@ static inline int derand_sk_sockets_allocated_read_positive(struct sock *sk){
 
 /* A call to skb_mstamp_get */
 static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl, int loc){
-	// TODO check if in replay mode
+	// check if in replay mode
+	if (sk->replayer && derand_record_ops.skb_mstamp_get){
+		derand_record_ops.skb_mstamp_get(sk, cl, loc);
+		return;
+	}
 
 	// not in replay mode
 	skb_mstamp_get(cl);
