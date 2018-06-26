@@ -27,6 +27,9 @@ struct derand_record_ops{
 	/* A new tcp_recvmsg sockcall. Return the sockcall ID */
 	u32 (*new_recvmsg)(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 
+	/* A new tcp_splice_read sockcall. Return sockcall ID */
+	u32 (*new_splice_read)(struct sock *sk, size_t len, unsigned int flags);
+
 	/* A new tcp_close sockcall. Return the sockcall ID */
 	u32 (*new_close)(struct sock *sk, long timeout);
 

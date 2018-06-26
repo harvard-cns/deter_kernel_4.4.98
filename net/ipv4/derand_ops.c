@@ -26,6 +26,11 @@ static u32 new_recvmsg_default(struct sock *sk, struct msghdr *msg, size_t len, 
 	return 0;
 }
 
+/* default function for new tcp_splice_read */
+static u32 new_splice_read_default(struct sock *sk, size_t len, unsigned int flags){
+	return 0;
+}
+
 /* default function for new tcp_close */
 static u32 new_close_default(struct sock *sk, long timeout){
 	return 0;
@@ -105,6 +110,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.new_sendmsg = new_sendmsg_default,
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
+	.new_splice_read = new_splice_read_default,
 	.new_close = new_close_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,
@@ -146,6 +152,7 @@ struct derand_record_ops derand_record_ops = {
 	.new_sendmsg = new_sendmsg_default,
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
+	.new_splice_read = new_splice_read_default,
 	.new_close = new_close_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,

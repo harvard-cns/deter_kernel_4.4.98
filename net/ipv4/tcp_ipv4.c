@@ -1637,9 +1637,6 @@ lookup:
 		goto no_tcp_socket;
 
 process:
-	#if DERAND_ENABLE
-	derand_record_ops.mon_net_action(sk, skb);
-	#endif
 	if (sk->sk_state == TCP_TIME_WAIT)
 		goto do_time_wait;
 
@@ -1705,6 +1702,9 @@ process:
 	bh_lock_sock_nested(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.incoming_pkt(sk);
+	#endif
+	#if DERAND_ENABLE
+	derand_record_ops.mon_net_action(sk, skb);
 	#endif
 	tcp_sk(sk)->segs_in += max_t(u16, 1, skb_shinfo(skb)->gso_segs);
 	ret = 0;

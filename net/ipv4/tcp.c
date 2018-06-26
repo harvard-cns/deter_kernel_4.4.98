@@ -753,6 +753,9 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 	long timeo;
 	ssize_t spliced;
 	int ret;
+	#if DERAND_ENABLE
+	derand_record_ops.new_splice_read(sk, len, flags);
+	#endif
 
 	sock_rps_record_flow(sk);
 	/*
@@ -1040,7 +1043,8 @@ int tcp_sendpage(struct sock *sk, struct page *page, int offset,
 	ssize_t res;
 
 	#if DERAND_ENABLE
-	derand_record_ops.new_sendpage(sk, offset, size, flags);
+	return sock_no_sendpage(sk->sk_socket, page, offset, size, flags);
+	//derand_record_ops.new_sendpage(sk, offset, size, flags);
 	#endif
 	if (!(sk->sk_route_caps & NETIF_F_SG) ||
 	    !(sk->sk_route_caps & NETIF_F_ALL_CSUM))
@@ -1727,7 +1731,7 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	#if DERAND_ENABLE
 	u32 sc_id;
 	sc_id = derand_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
-	#endif /* DERAND_ENABLE */
+	#endif
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
@@ -1740,13 +1744,16 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	derand_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
 		goto out;
 
 	timeo = sock_rcvtimeo(sk, nonblock);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 200, timeo);
+	#endif
 
 	/* Urgent data needs to be handled specially. */
 	if (flags & MSG_OOB)
@@ -1775,13 +1782,22 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 201, target);
+	#endif
 	do {
 		u32 offset;
 
 		/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
 		if (tp->urg_data && tp->urg_seq == *seq) {
+			#if DERAND_ENABLE
+			derand_general_event(sk, 202, ((u64)tp->urg_data << 32) | tp->urg_seq);
+			#endif
 			if (copied)
 				break;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 203, copied);
+			#endif
 			if (signal_pending(current)) {
 				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
 				break;
@@ -1790,9 +1806,15 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		/* Next get a buffer. */
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 204, *seq);
+		#endif
 		last = skb_peek_tail(&sk->sk_receive_queue);
 		skb_queue_walk(&sk->sk_receive_queue, skb) {
 			last = skb;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 205, ((u64)*seq << 32) | TCP_SKB_CB(skb)->seq);
+			#endif
 			/* Now that we have two receive queues this
 			 * shouldn't happen.
 			 */
@@ -1805,10 +1827,19 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			offset = *seq - TCP_SKB_CB(skb)->seq;
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
 				offset--;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 206, offset);
+			#endif
 			if (offset < skb->len)
 				goto found_ok_skb;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 207, skb->len);
+			#endif
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 				goto found_fin_ok;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 208, TCP_SKB_CB(skb)->tcp_flags);
+			#endif
 			WARN(!(flags & MSG_PEEK),
 			     "recvmsg bug 2: copied %X seq %X rcvnxt %X fl %X\n",
 			     *seq, TCP_SKB_CB(skb)->seq, tp->rcv_nxt, flags);
@@ -1816,10 +1847,16 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		/* Well, if we have backlog, try to process it now yet. */
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 209, copied);
+		#endif
 		if (copied >= target && !sk->sk_backlog.tail)
 			break;
 
 		if (copied) {
+			#if DERAND_ENABLE
+			derand_general_event(sk, 210, copied);
+			#endif
 			if (sk->sk_err ||
 			    sk->sk_state == TCP_CLOSE ||
 			    (sk->sk_shutdown & RCV_SHUTDOWN) ||
@@ -1827,6 +1864,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			    signal_pending(current))
 				break;
 		} else {
+			#if DERAND_ENABLE
+			derand_general_event(sk, 211, copied);
+			#endif
 			if (sock_flag(sk, SOCK_DONE))
 				break;
 
@@ -1859,12 +1899,21 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 				break;
 			}
 		}
+		#if DERAND_ENABLE
+		derand_general_event(sk, 212, copied);
+		#endif
 
 		tcp_cleanup_rbuf(sk, copied);
 
 		if (!sysctl_tcp_low_latency && tp->ucopy.task == user_recv) {
+			#if DERAND_ENABLE
+			derand_general_event(sk, 213, len);
+			#endif
 			/* Install new reader */
 			if (!user_recv && !(flags & (MSG_TRUNC | MSG_PEEK))) {
+				#if DERAND_ENABLE
+				derand_general_event(sk, 214, 0);
+				#endif
 				user_recv = current;
 				tp->ucopy.task = user_recv;
 				tp->ucopy.msg = msg;
@@ -1906,6 +1955,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 			/* __ Set realtime policy in scheduler __ */
 		}
+		#if DERAND_ENABLE
+		derand_general_event(sk, 215, copied);
+		#endif
 
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
@@ -1930,6 +1982,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			/* __ Restore normal policy in scheduler __ */
 
 			chunk = len - tp->ucopy.len;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 216, ((u64)len << 32) | tp->ucopy.len);
+			#endif
 			if (chunk != 0) {
 				NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMBACKLOG, chunk);
 				len -= chunk;
@@ -1939,10 +1994,16 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			if (tp->rcv_nxt == tp->copied_seq &&
 			    !skb_queue_empty(&tp->ucopy.prequeue)) {
 do_prequeue:
+				#if DERAND_ENABLE
+				derand_general_event(sk, 217, tp->rcv_nxt);
+				#endif
 				tcp_prequeue_process(sk);
 
 				chunk = len - tp->ucopy.len;
 				if (chunk != 0) {
+					#if DERAND_ENABLE
+					derand_general_event(sk, 218, ((u64)len << 32) | tp->ucopy.len);
+					#endif
 					NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMPREQUEUE, chunk);
 					len -= chunk;
 					copied += chunk;
@@ -1959,6 +2020,9 @@ do_prequeue:
 		continue;
 
 	found_ok_skb:
+		#if DERAND_ENABLE
+		derand_general_event(sk, 219, skb->len);
+		#endif
 		/* Ok so how much can we use? */
 		used = skb->len - offset;
 		if (len < used)
@@ -1967,7 +2031,13 @@ do_prequeue:
 		/* Do we have urgent data here? */
 		if (tp->urg_data) {
 			u32 urg_offset = tp->urg_seq - *seq;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 220, ((u64)tp->urg_seq << 32) | *seq);
+			#endif
 			if (urg_offset < used) {
+				#if DERAND_ENABLE
+				derand_general_event(sk, 221, used);
+				#endif
 				if (!urg_offset) {
 					if (!sock_flag(sk, SOCK_URGINLINE)) {
 						++*seq;
@@ -1982,8 +2052,14 @@ do_prequeue:
 			}
 		}
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 222, used);
+		#endif
 		if (!(flags & MSG_TRUNC)) {
 			err = skb_copy_datagram_msg(skb, offset, msg, used);
+			#if DERAND_ENABLE
+			derand_general_event(sk, 223, err);
+			#endif
 			if (err) {
 				/* Exception. Bailout! */
 				if (!copied)
@@ -1999,6 +2075,9 @@ do_prequeue:
 		tcp_rcv_space_adjust(sk);
 
 skip_copy:
+		#if DERAND_ENABLE
+		derand_general_event(sk, 224, copied);
+		#endif
 		if (tp->urg_data && after(tp->copied_seq, tp->urg_seq)) {
 			tp->urg_data = 0;
 			tcp_fast_path_check(sk);
@@ -2006,6 +2085,9 @@ skip_copy:
 		if (used + offset < skb->len)
 			continue;
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 225, ((u64)used << 32) | offset);
+		#endif
 		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 			goto found_fin_ok;
 		if (!(flags & MSG_PEEK))
@@ -2013,6 +2095,9 @@ skip_copy:
 		continue;
 
 	found_fin_ok:
+		#if DERAND_ENABLE
+		derand_general_event(sk, 226, *seq);
+		#endif
 		/* Process the FIN. */
 		++*seq;
 		if (!(flags & MSG_PEEK))
@@ -2021,11 +2106,17 @@ skip_copy:
 	} while (len > 0);
 
 	if (user_recv) {
+		#if DERAND_ENABLE
+		derand_general_event(sk, 227, 0);
+		#endif
 		if (!skb_queue_empty(&tp->ucopy.prequeue)) {
 			int chunk;
 
 			tp->ucopy.len = copied > 0 ? len : 0;
 
+			#if DERAND_ENABLE
+			derand_general_event(sk, 228, tp->ucopy.len);
+			#endif
 			tcp_prequeue_process(sk);
 
 			if (copied > 0 && (chunk = len - tp->ucopy.len) != 0) {
@@ -2063,10 +2154,16 @@ out:
 
 recv_urg:
 	err = tcp_recv_urg(sk, msg, len, flags);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 229, err);
+	#endif
 	goto out;
 
 recv_sndq:
 	err = tcp_peek_sndq(sk, msg, len);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 230, err);
+	#endif
 	goto out;
 }
 EXPORT_SYMBOL(tcp_recvmsg);
