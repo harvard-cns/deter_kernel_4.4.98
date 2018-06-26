@@ -1611,6 +1611,9 @@ static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now)
 {
 	u32 bytes, segs;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 45, ((u64)sk->sk_pacing_rate<<32) | sk->sk_gso_max_size);
+	#endif
 	bytes = min(sk->sk_pacing_rate >> 10,
 		    sk->sk_gso_max_size - 1 - MAX_TCP_HEADER);
 
@@ -1620,6 +1623,9 @@ static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now)
 	 * with tcp_tso_should_defer() heuristic.
 	 */
 	segs = max_t(u32, bytes / mss_now, sysctl_tcp_min_tso_segs);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 46, ((u64)mss_now << 32) | sk->sk_gso_max_segs);
+	#endif
 
 	return min_t(u32, segs, sk->sk_gso_max_segs);
 }
@@ -2136,11 +2142,17 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 	}
 
 	max_segs = tcp_tso_autosize(sk, mss_now);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 50, (sent_pkts<<32) | max_segs);
+	#endif
 	while ((skb = tcp_send_head(sk))) {
 		unsigned int limit;
 
 		tso_segs = tcp_init_tso_segs(skb, mss_now);
 		BUG_ON(!tso_segs);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 51, tso_segs);
+		#endif
 
 		if (unlikely(tp->repair) && tp->repair_queue == TCP_SEND_QUEUE) {
 			/* "skb_mstamp" is used as a start point for the retransmit timer */
@@ -2160,10 +2172,16 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			else
 				break;
 		}
+		#if DERAND_ENABLE
+		derand_general_event(sk, 52, cwnd_quota);
+		#endif
 
 		if (unlikely(!tcp_snd_wnd_test(tp, skb, mss_now)))
 			break;
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 53, mss_now);
+		#endif
 		if (tso_segs == 1) {
 			if (unlikely(!tcp_nagle_test(tp, skb, mss_now,
 						     (tcp_skb_is_last(sk, skb) ?
@@ -2183,6 +2201,9 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 							  cwnd_quota,
 							  max_segs),
 						    nonagle);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 54, limit);
+		#endif
 
 		if (skb->len > limit &&
 		    unlikely(tso_fragment(sk, skb, limit, mss_now, gfp)))
@@ -2200,6 +2221,9 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		 */
 		limit = max(2 * skb->truesize, sk->sk_pacing_rate >> 10);
 		limit = min_t(u32, limit, sysctl_tcp_limit_output_bytes);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 55, limit);
+		#endif
 
 		#if DERAND_ENABLE
 		if (derand_effect_bool(sk, 12, atomic_read(&sk->sk_wmem_alloc) > limit))
@@ -2232,6 +2256,9 @@ repair:
 
 		tcp_minshall_update(tp, mss_now, skb);
 		sent_pkts += tcp_skb_pcount(skb);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 56, sent_pkts);
+		#endif
 
 		if (push_one)
 			break;
@@ -2240,6 +2267,9 @@ repair:
 	if (likely(sent_pkts)) {
 		if (tcp_in_cwnd_reduction(sk))
 			tp->prr_out += sent_pkts;
+		#if DERAND_ENABLE
+		derand_general_event(sk, 57, tp->prr_out);
+		#endif
 
 		/* Send one loss probe per tail loss episode. */
 		if (push_one != 2)
@@ -2248,6 +2278,9 @@ repair:
 		tcp_cwnd_validate(sk, is_cwnd_limited);
 		return false;
 	}
+	#if DERAND_ENABLE
+	derand_general_event(sk, 58, tp->packets_out);
+	#endif
 	return !tp->packets_out && tcp_send_head(sk);
 }
 

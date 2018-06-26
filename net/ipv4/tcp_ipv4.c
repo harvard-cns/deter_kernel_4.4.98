@@ -1637,6 +1637,9 @@ lookup:
 		goto no_tcp_socket;
 
 process:
+	#if DERAND_ENABLE
+	derand_record_ops.mon_net_action(sk, skb);
+	#endif
 	if (sk->sk_state == TCP_TIME_WAIT)
 		goto do_time_wait;
 

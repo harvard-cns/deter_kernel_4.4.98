@@ -2,7 +2,7 @@
 
 #if DERAND_ENABLE
 /* default function for create recorder */
-static void recorder_create_default(struct sock* sk){
+static void recorder_create_default(struct sock* sk, struct sk_buff* skb){
 	return;
 }
 
@@ -23,6 +23,11 @@ static u32 new_sendpage_default(struct sock *sk, int offset, size_t size, int fl
 
 /* default function for new tcp_recvmsg */
 static u32 new_recvmsg_default(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len){
+	return 0;
+}
+
+/* default function for new tcp_close */
+static u32 new_close_default(struct sock *sk, long timeout){
 	return 0;
 }
 
@@ -86,6 +91,11 @@ void tasklet_before_lock_default(struct sock *sk){
 	return;
 }
 
+/* default function for mon_net_action */
+void mon_net_action_default(struct sock *sk, struct sk_buff *skb){
+	return;
+}
+
 /* Default operations.
  * All do nothing */
 struct derand_record_ops derand_record_ops_default = {
@@ -95,6 +105,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.new_sendmsg = new_sendmsg_default,
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
+	.new_close = new_close_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,
@@ -107,6 +118,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.keepalive_timer_before_lock = keepalive_timer_before_lock_default,
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
+	.mon_net_action = mon_net_action_default,
 	.read_jiffies = NULL,
 	.replay_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
@@ -120,6 +132,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.sk_sockets_allocated_read_positive = NULL,
 	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
+	.general_event = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops_default);
 
@@ -133,6 +146,7 @@ struct derand_record_ops derand_record_ops = {
 	.new_sendmsg = new_sendmsg_default,
 	.new_sendpage = new_sendpage_default,
 	.new_recvmsg = new_recvmsg_default,
+	.new_close = new_close_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,
@@ -145,6 +159,7 @@ struct derand_record_ops derand_record_ops = {
 	.keepalive_timer_before_lock = keepalive_timer_before_lock_default,
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
+	.mon_net_action = mon_net_action_default,
 	.read_jiffies = NULL,
 	.replay_jiffies = NULL,
 	.read_tcp_time_stamp = NULL,
@@ -158,6 +173,7 @@ struct derand_record_ops derand_record_ops = {
 	.sk_sockets_allocated_read_positive = NULL,
 	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
+	.general_event = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops);
 

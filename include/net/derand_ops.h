@@ -10,10 +10,10 @@
 
 struct derand_record_ops{
 	/* Create a recorder at server side */
-	void (*server_recorder_create)(struct sock*);
+	void (*server_recorder_create)(struct sock*, struct sk_buff *skb);
 
 	/* Create a recorder at client side */
-	void (*client_recorder_create)(struct sock*);
+	void (*client_recorder_create)(struct sock*, struct sk_buff *skb);
 
 	/* Destruct a recorder */
 	void (*recorder_destruct)(struct sock*);
@@ -26,6 +26,9 @@ struct derand_record_ops{
 
 	/* A new tcp_recvmsg sockcall. Return the sockcall ID */
 	u32 (*new_recvmsg)(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+
+	/* A new tcp_close sockcall. Return the sockcall ID */
+	u32 (*new_close)(struct sock *sk, long timeout);
 
 	/* A new event that a sockcall acquire a spinlock. sc_id: sockcall ID */
 	void (*sockcall_lock)(struct sock *sk, u32 sc_id);
@@ -63,6 +66,9 @@ struct derand_record_ops{
 	/* For replay: hook before acquiring lock for tasklet*/
 	void (*tasklet_before_lock)(struct sock *sk);
 
+	/* For monitoring network actions on incoming packets */
+	void (*mon_net_action)(struct sock *sk, struct sk_buff *skb);
+
 	/***********************
 	 * shared values
 	 **********************/
@@ -99,6 +105,9 @@ struct derand_record_ops{
 	/* A call to skb_mstamp_get */
 	void (*skb_mstamp_get)(struct sock *sk, struct skb_mstamp *cl, int loc);
 	// we do not need special replay function for mstamp, because the above one can return value to cl
+
+	/* A general event */
+	void (*general_event)(const struct sock *sk, int loc, u64 data);
 
 	/* TODO: We left out orphan socket related things */
 };
@@ -223,6 +232,14 @@ static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl,
 	// if in record mode
 	if (sk->recorder && derand_record_ops.skb_mstamp_get)
 		derand_record_ops.skb_mstamp_get(sk, cl, loc);
+}
+
+/* A general event */
+static inline void derand_general_event(const struct sock *sk, int loc, u64 data){
+	if (derand_record_ops.general_event){
+		if (sk->recorder || sk->replayer)
+			derand_record_ops.general_event(sk, loc, data);
+	}
 }
 
 #endif /* DERAND_ENABLE */

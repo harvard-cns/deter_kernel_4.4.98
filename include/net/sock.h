@@ -961,13 +961,13 @@ static inline void sock_rps_reset_rxhash(struct sock *sk)
 #if DERAND_ENABLE
 #define derand_sk_wait_event(__sk, __timeo, __condition, sc_id)			\
 	({	int __rc;						\
-		derand_release_sock(__sk, sc_id);					\
+		derand_release_sock(__sk, (sc_id) + (0 << 29));					\
 		__rc = __condition;					\
 		if (!__rc) {						\
 			*(__timeo) = schedule_timeout(*(__timeo));	\
 		}							\
 		sched_annotate_sleep();						\
-		derand_lock_sock(__sk, sc_id);					\
+		derand_lock_sock(__sk, (sc_id) + (1 << 29));					\
 		__rc = __condition;					\
 		__rc;							\
 	})

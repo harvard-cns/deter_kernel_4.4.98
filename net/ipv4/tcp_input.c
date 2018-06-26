@@ -5358,6 +5358,13 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
+	#if DERAND_ENABLE
+	{
+		struct iphdr *iph = ip_hdr(skb);
+		struct tcphdr *tcph = (struct tcphdr *)((u32 *)iph + iph->ihl);
+		derand_general_event(sk, 100, ((u64)ntohs(iph->id) << 32) | ntohl(tcph->ack_seq));
+	}
+	#endif
 	if (unlikely(!sk->sk_rx_dst))
 		inet_csk(sk)->icsk_af_ops->sk_rx_dst_set(sk, skb);
 	/*
@@ -5592,7 +5599,7 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 		tp->pred_flags = 0;
 
 	#if DERAND_ENABLE
-	derand_record_ops.client_recorder_create(sk);
+	derand_record_ops.client_recorder_create(sk, skb);
 	#endif /* DERAND_ENABLE */
 	if (!sock_flag(sk, SOCK_DEAD)) {
 		sk->sk_state_change(sk);
@@ -6034,7 +6041,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		tcp_initialize_rcv_mss(sk);
 		tcp_fast_path_on(tp);
 		#if DERAND_ENABLE
-		derand_record_ops.server_recorder_create(sk);
+		derand_record_ops.server_recorder_create(sk, skb);
 		#endif
 		break;
 

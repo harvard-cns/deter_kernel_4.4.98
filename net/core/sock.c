@@ -1937,8 +1937,13 @@ int sock_cmsg_send(struct sock *sk, struct msghdr *msg,
 }
 EXPORT_SYMBOL(sock_cmsg_send);
 
+#if DERAND_ENABLE
+/* To avoid page allocate to affect replay, an skb frag is limited to 4096 */
+#define SKB_FRAG_PAGE_ORDER get_order(PAGE_SIZE)
+#else
 /* On 32bit arches, an skb frag is limited to 2^15 */
 #define SKB_FRAG_PAGE_ORDER	get_order(32768)
+#endif
 
 /**
  * skb_page_frag_refill - check that a page_frag contains enough room
@@ -2601,11 +2606,11 @@ EXPORT_SYMBOL(lock_sock_nested);
 void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
 {
 	might_sleep();
-	derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
+	derand_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
 	spin_lock_bh(&sk->sk_lock.slock);
-	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+	derand_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
 	if (sk->sk_lock.owned)
-		__derand_lock_sock(sk, sc_id);
+		__derand_lock_sock(sk, (sc_id) | (1 << 28));
 	sk->sk_lock.owned = 1;
 	spin_unlock(&sk->sk_lock.slock);
 	/*
@@ -2649,11 +2654,11 @@ void derand_release_sock(struct sock *sk, u32 sc_id)
 	 */
 	mutex_release(&sk->sk_lock.dep_map, 1, _RET_IP_);
 
-	derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
+	derand_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
 	spin_lock_bh(&sk->sk_lock.slock);
-	derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+	derand_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
 	if (sk->sk_backlog.tail)
-		__derand_release_sock(sk, sc_id);
+		__derand_release_sock(sk, (sc_id) | (1 << 28));
 
 	/* Warning : release_cb() might need to release sk ownership,
 	 * ie call sock_release_ownership(sk) before us.
