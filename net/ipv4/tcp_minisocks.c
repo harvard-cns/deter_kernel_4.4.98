@@ -599,6 +599,14 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 			 */
 			tmp_opt.ts_recent_stamp = get_seconds() - ((TCP_TIMEOUT_INIT/HZ)<<req->num_timeout);
 			paws_reject = tcp_paws_reject(&tmp_opt, th->rst);
+			#if DERAND_ENABLE
+			/* If this is for replay, ignore the paws check.
+			 * Otherwise, paws check is likely to fail, because when
+			 * client sends the ACK, its timestamp is already changed
+			 * to the recorded, but this listening socket has the
+			 * unchanged values. So paws check may fail.*/
+			paws_reject &= !derand_record_ops.to_replay_server(sk);
+			#endif
 		}
 	}
 

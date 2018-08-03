@@ -72,6 +72,9 @@ struct derand_record_ops{
 	/* For monitoring network actions on incoming packets */
 	void (*mon_net_action)(struct sock *sk, struct sk_buff *skb);
 
+	/* For deciding whether the listening socket is to replay or not */
+	int (*to_replay_server)(struct sock *sk);
+
 	/***********************
 	 * shared values
 	 **********************/
