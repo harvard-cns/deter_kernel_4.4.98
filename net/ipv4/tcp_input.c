@@ -808,6 +808,9 @@ static void tcp_update_pacing_rate(struct sock *sk)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	u64 rate;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 60, tp->mss_cache);
+	#endif
 	/* set sk_pacing_rate to 200 % of current rate (mss * cwnd / srtt) */
 	rate = (u64)tp->mss_cache * ((USEC_PER_SEC / 100) << 3);
 
@@ -819,11 +822,17 @@ static void tcp_update_pacing_rate(struct sock *sk)
 	 *	 If snd_cwnd >= (tp->snd_ssthresh / 2), we are approaching
 	 *	 end of slow start and should slow down.
 	 */
+	#if DERAND_ENABLE
+	derand_general_event(sk, 61, ((u64)tp->snd_cwnd << 32) | tp->snd_ssthresh);
+	#endif
 	if (tp->snd_cwnd < tp->snd_ssthresh / 2)
 		rate *= sysctl_tcp_pacing_ss_ratio;
 	else
 		rate *= sysctl_tcp_pacing_ca_ratio;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 62, ((u64)tp->srtt_us << 32) | tp->packets_out);
+	#endif
 	rate *= max(tp->snd_cwnd, tp->packets_out);
 
 	if (likely(tp->srtt_us))
@@ -833,6 +842,9 @@ static void tcp_update_pacing_rate(struct sock *sk)
 	 * without any lock. We want to make sure compiler wont store
 	 * intermediate values in this location.
 	 */
+	#if DERAND_ENABLE
+	derand_general_event(sk, 63, sk->sk_max_pacing_rate);
+	#endif
 	ACCESS_ONCE(sk->sk_pacing_rate) = min_t(u64, rate,
 						sk->sk_max_pacing_rate);
 }
@@ -5362,7 +5374,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 	{
 		struct iphdr *iph = ip_hdr(skb);
 		struct tcphdr *tcph = (struct tcphdr *)((u32 *)iph + iph->ihl);
-		derand_general_event(sk, 100, ((u64)ntohs(iph->id) << 32) | ntohl(tcph->ack_seq));
+		derand_general_event(sk, 100, ((u64)ntohl(tcph->seq) << 32) | ntohl(tcph->ack_seq));
 	}
 	#endif
 	if (unlikely(!sk->sk_rx_dst))
