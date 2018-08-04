@@ -111,6 +111,24 @@ void sk_stream_wait_close(struct sock *sk, long timeout)
 	}
 }
 EXPORT_SYMBOL(sk_stream_wait_close);
+#if DERAND_ENABLE
+void derand_sk_stream_wait_close(struct sock *sk, long timeout, u32 sc_id)
+{
+	if (timeout) {
+		DEFINE_WAIT(wait);
+
+		do {
+			prepare_to_wait(sk_sleep(sk), &wait,
+					TASK_INTERRUPTIBLE);
+			if (derand_sk_wait_event(sk, &timeout, !sk_stream_closing(sk), sc_id))
+				break;
+		} while (!signal_pending(current) && timeout);
+
+		finish_wait(sk_sleep(sk), &wait);
+	}
+}
+EXPORT_SYMBOL(derand_sk_stream_wait_close);
+#endif /* DERAND_ENABLE */
 
 /**
  * sk_stream_wait_memory - Wait for more memory for a socket

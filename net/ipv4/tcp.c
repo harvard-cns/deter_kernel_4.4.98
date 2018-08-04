@@ -2370,7 +2370,11 @@ void tcp_close(struct sock *sk, long timeout)
 		tcp_send_fin(sk);
 	}
 
+	#if DERAND_ENABLE
+	derand_sk_stream_wait_close(sk, timeout, sc_id | (6<<29));
+	#else
 	sk_stream_wait_close(sk, timeout);
+	#endif
 
 adjudge_to_death:
 	state = sk->sk_state;
@@ -2378,14 +2382,24 @@ adjudge_to_death:
 	sock_orphan(sk);
 
 	/* It is the last release_sock in its life. It will remove backlog. */
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id | (1<<29));
+	#else
 	release_sock(sk);
+	#endif
 
 
 	/* Now socket is owned by kernel and we acquire BH lock
 	   to finish close. No need to check for user refs.
 	 */
 	local_bh_disable();
+	#if DERAND_ENABLE
+	derand_record_ops.sockcall_before_lock(sk, sc_id | (2<<29));
+	#endif
 	bh_lock_sock(sk);
+	#if DERAND_ENABLE
+	derand_record_ops.sockcall_lock(sk, sc_id | (2<<29));
+	#endif
 	WARN_ON(sock_owned_by_user(sk));
 
 	percpu_counter_inc(sk->sk_prot->orphan_count);

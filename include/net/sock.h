@@ -985,6 +985,7 @@ int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb);
 #if DERAND_ENABLE
 int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id);
 int derand_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id);
+void derand_sk_stream_wait_close(struct sock *sk, long timeo_p, u32 sc_id);
 #endif /* DERAND_ENABLE */
 
 struct request_sock_ops;
