@@ -405,7 +405,7 @@ EXPORT_SYMBOL(inet_csk_delete_keepalive_timer);
 void inet_csk_reset_keepalive_timer(struct sock *sk, unsigned long len)
 {
 	#if DERAND_ENABLE
-	sk_reset_timer(sk, &sk->sk_timer, derand_jiffies(sk, 11) + len);
+	sk_reset_timer(sk, &sk->sk_timer, derand_jiffies(sk, 12) + len);
 	#else
 	sk_reset_timer(sk, &sk->sk_timer, jiffies + len);
 	#endif
