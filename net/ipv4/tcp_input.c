@@ -3058,6 +3058,10 @@ static inline bool tcp_ack_update_rtt(struct sock *sk, const int flag,
 	 * always taken together with ACK, SACK, or TS-opts. Any negative
 	 * values will be skipped with the seq_rtt_us < 0 check above.
 	 */
+	#if DERAND_ENABLE
+	derand_general_event(sk, 140, ca_rtt_us);
+	derand_general_event(sk, 141, seq_rtt_us);
+	#endif
 	tcp_update_rtt_min(sk, ca_rtt_us);
 	tcp_rtt_estimator(sk, seq_rtt_us);
 	tcp_set_rto(sk);
@@ -3221,7 +3225,13 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 		u8 sacked = scb->sacked;
 		u32 acked_pcount;
 
+		#if DERAND_ENABLE
+		derand_general_event(sk, 130, skb->skb_mstamp.v64);
+		#endif
 		tcp_ack_tstamp(sk, skb, prior_snd_una);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 131, skb->skb_mstamp.v64);
+		#endif
 
 		/* Determine how many packets and what bytes were acked, tso and else */
 		if (after(scb->end_seq, tp->snd_una)) {
@@ -3254,6 +3264,10 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 			if (!after(scb->end_seq, tp->high_seq))
 				flag |= FLAG_ORIG_SACK_ACKED;
 		}
+		#if DERAND_ENABLE
+		derand_general_event(sk, 132, first_ackt.v64);
+		derand_general_event(sk, 133, last_ackt.v64);
+		#endif
 
 		if (sacked & TCPCB_SACKED_ACKED)
 			tp->sacked_out -= acked_pcount;
@@ -3305,10 +3319,18 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 		seq_rtt_us = skb_mstamp_us_delta(&now, &first_ackt);
 		ca_rtt_us = skb_mstamp_us_delta(&now, &last_ackt);
 	}
+	#if DERAND_ENABLE
+	derand_general_event(sk, 134, seq_rtt_us);
+	derand_general_event(sk, 135, ca_rtt_us);
+	#endif
 	if (sack->first_sackt.v64) {
 		sack_rtt_us = skb_mstamp_us_delta(&now, &sack->first_sackt);
 		ca_rtt_us = skb_mstamp_us_delta(&now, &sack->last_sackt);
 	}
+	#if DERAND_ENABLE
+	derand_general_event(sk, 136, sack_rtt_us);
+	derand_general_event(sk, 137, ca_rtt_us);
+	#endif
 
 	rtt_update = tcp_ack_update_rtt(sk, flag, seq_rtt_us, sack_rtt_us,
 					ca_rtt_us);
