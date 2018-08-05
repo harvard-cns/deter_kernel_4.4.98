@@ -3259,15 +3259,15 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 			WARN_ON_ONCE(last_ackt.v64 == 0);
 			if (!first_ackt.v64)
 				first_ackt = last_ackt;
+			#if DERAND_ENABLE
+			derand_general_event(sk, 132, first_ackt.v64);
+			derand_general_event(sk, 133, last_ackt.v64);
+			#endif
 
 			reord = min(pkts_acked, reord);
 			if (!after(scb->end_seq, tp->high_seq))
 				flag |= FLAG_ORIG_SACK_ACKED;
 		}
-		#if DERAND_ENABLE
-		derand_general_event(sk, 132, first_ackt.v64);
-		derand_general_event(sk, 133, last_ackt.v64);
-		#endif
 
 		if (sacked & TCPCB_SACKED_ACKED)
 			tp->sacked_out -= acked_pcount;
