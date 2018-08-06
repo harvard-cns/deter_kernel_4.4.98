@@ -1324,7 +1324,11 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 	inet_csk(newsk)->icsk_ext_hdr_len = 0;
 	if (inet_opt)
 		inet_csk(newsk)->icsk_ext_hdr_len = inet_opt->opt.optlen;
+	#if DERAND_ENABLE
+	newinet->inet_id = 1; // set the ipid of the first data/ack packet to 1
+	#else
 	newinet->inet_id = newtp->write_seq ^ jiffies;
+	#endif
 
 	if (!dst) {
 		dst = inet_csk_route_child_sock(sk, newsk, req);
