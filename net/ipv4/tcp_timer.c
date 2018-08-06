@@ -167,6 +167,9 @@ static bool retransmits_timed_out(struct sock *sk,
 				(boundary - linear_backoff_thresh) * TCP_RTO_MAX;
 	}
 	#if DERAND_ENABLE
+	derand_general_event(sk, 340, timeout);
+	#endif
+	#if DERAND_ENABLE
 	return (derand_tcp_time_stamp(sk, 50) - start_ts) >= timeout;
 	#else
 	return (tcp_time_stamp - start_ts) >= timeout;
@@ -181,6 +184,9 @@ static int tcp_write_timeout(struct sock *sk)
 	int retry_until;
 	bool do_reset, syn_set = false;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 330, sk->sk_state);
+	#endif
 	if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV)) {
 		if (icsk->icsk_retransmits) {
 			dst_negative_advice(sk);
@@ -193,6 +199,9 @@ static int tcp_write_timeout(struct sock *sk)
 		retry_until = icsk->icsk_syn_retries ? : sysctl_tcp_syn_retries;
 		syn_set = true;
 	} else {
+		#if DERAND_ENABLE
+		derand_general_event(sk, 331, sysctl_tcp_retries1);
+		#endif
 		if (retransmits_timed_out(sk, sysctl_tcp_retries1, 0, 0)) {
 			/* Some middle-boxes may black-hole Fast Open _after_
 			 * the handshake. Therefore we conservatively disable
@@ -206,6 +215,9 @@ static int tcp_write_timeout(struct sock *sk)
 					NET_INC_STATS_BH(sock_net(sk),
 							 LINUX_MIB_TCPFASTOPENACTIVEFAIL);
 			}
+			#if DERAND_ENABLE
+			derand_general_event(sk, 332, 0);
+			#endif
 			/* Black hole detection */
 			tcp_mtu_probing(icsk, sk);
 
@@ -213,10 +225,16 @@ static int tcp_write_timeout(struct sock *sk)
 		}
 
 		retry_until = sysctl_tcp_retries2;
+		#if DERAND_ENABLE
+		derand_general_event(sk, 333, retry_until);
+		#endif
 		if (sock_flag(sk, SOCK_DEAD)) {
 			const bool alive = icsk->icsk_rto < TCP_RTO_MAX;
 
 			retry_until = tcp_orphan_retries(sk, alive);
+			#if DERAND_ENABLE
+			derand_general_event(sk, 334, retry_until);
+			#endif
 			do_reset = alive ||
 				!retransmits_timed_out(sk, retry_until, 0, 0);
 
@@ -225,6 +243,9 @@ static int tcp_write_timeout(struct sock *sk)
 		}
 	}
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 335, retry_until);
+	#endif
 	if (retransmits_timed_out(sk, retry_until,
 				  syn_set ? 0 : icsk->icsk_user_timeout, syn_set)) {
 		/* Has it gone just too far? */
@@ -423,6 +444,9 @@ void tcp_retransmit_timer(struct sock *sk)
 
 	tp->tlp_high_seq = 0;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 310, tp->snd_wnd);
+	#endif
 	if (!tp->snd_wnd && !sock_flag(sk, SOCK_DEAD) &&
 	    !((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))) {
 		/* Receiver dastardly shrinks window. Our retransmits
@@ -464,6 +488,9 @@ void tcp_retransmit_timer(struct sock *sk)
 	if (tcp_write_timeout(sk))
 		goto out;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 311, icsk->icsk_retransmits);
+	#endif
 	if (icsk->icsk_retransmits == 0) {
 		int mib_idx;
 
@@ -555,6 +582,9 @@ void tcp_write_timer_handler(struct sock *sk)
 		goto out;
 
 	#if DERAND_ENABLE
+	derand_general_event(sk, 300, icsk->icsk_timeout);
+	#endif
+	#if DERAND_ENABLE
 	if (time_after(icsk->icsk_timeout, derand_jiffies(sk, 9))) {
 	#else
 	if (time_after(icsk->icsk_timeout, jiffies)) {
@@ -563,6 +593,9 @@ void tcp_write_timer_handler(struct sock *sk)
 		goto out;
 	}
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 301, icsk->icsk_pending);
+	#endif
 	event = icsk->icsk_pending;
 
 	switch (event) {

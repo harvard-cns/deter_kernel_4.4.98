@@ -2735,9 +2735,15 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	#endif
 		return -EAGAIN;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 320, 0);
+	#endif
 	if (skb_still_in_host_queue(sk, skb))
 		return -EBUSY;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 321, ((u64)TCP_SKB_CB(skb)->seq << 32) | tp->snd_una);
+	#endif
 	if (before(TCP_SKB_CB(skb)->seq, tp->snd_una)) {
 		if (before(TCP_SKB_CB(skb)->end_seq, tp->snd_una))
 			BUG();
@@ -2745,10 +2751,16 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 			return -ENOMEM;
 	}
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 322, ((u64)TCP_SKB_CB(skb)->seq << 32) | tp->snd_una);
+	#endif
 	if (inet_csk(sk)->icsk_af_ops->rebuild_header(sk))
 		return -EHOSTUNREACH; /* Routing failure or similar. */
 
 	cur_mss = tcp_current_mss(sk);
+	#if DERAND_ENABLE
+	derand_general_event(sk, 323, ((u64)cur_mss<<32)|tcp_wnd_end(tp));
+	#endif
 
 	/* If receiver has shrunk his window, and skb is out of
 	 * new window, do not retransmit it. The exception is the
@@ -2759,11 +2771,17 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	    TCP_SKB_CB(skb)->seq != tp->snd_una)
 		return -EAGAIN;
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 324, skb->len);
+	#endif
 	if (skb->len > cur_mss) {
 		if (tcp_fragment(sk, skb, cur_mss, cur_mss, GFP_ATOMIC))
 			return -ENOMEM; /* We'll try again later. */
 	} else {
 		int oldpcount = tcp_skb_pcount(skb);
+		#if DERAND_ENABLE
+		derand_general_event(sk, 325, oldpcount);
+		#endif
 
 		if (unlikely(oldpcount > 1)) {
 			if (skb_unclone(skb, GFP_ATOMIC))
@@ -2783,6 +2801,9 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	 * is still in somebody's hands, else make a clone.
 	 */
 
+	#if DERAND_ENABLE
+	derand_general_event(sk, 326, 0);
+	#endif
 	/* make sure skb->data is aligned on arches that require it
 	 * and check if ack-trimming & collapsing extended the headroom
 	 * beyond what csum_start can cover.
@@ -2802,6 +2823,9 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	} else {
 		err = tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC);
 	}
+	#if DERAND_ENABLE
+	derand_general_event(sk, 327, err);
+	#endif
 
 	if (likely(!err)) {
 		TCP_SKB_CB(skb)->sacked |= TCPCB_EVER_RETRANS;
