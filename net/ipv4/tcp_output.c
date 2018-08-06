@@ -3024,6 +3024,9 @@ void tcp_send_fin(struct sock *sk)
 	struct sk_buff *skb, *tskb = tcp_write_queue_tail(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
+	#if DERAND_ENABLE
+	derand_record_ops.record_fin_seq(sk);
+	#endif
 	/* Optimization, tack on the FIN if we have one skb in write queue and
 	 * this skb was not yet sent, or we are under memory pressure.
 	 * Note: in the latter case, FIN packet will be sent after a timeout,

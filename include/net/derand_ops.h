@@ -72,6 +72,9 @@ struct derand_record_ops{
 	/* For monitoring network actions on incoming packets */
 	void (*mon_net_action)(struct sock *sk, struct sk_buff *skb);
 
+	/* For recording the seq of the fin (i.e., last data seq + 1) */
+	void (*record_fin_seq)(struct sock *sk);
+
 	/* For deciding whether the listening socket is to replay or not */
 	int (*to_replay_server)(struct sock *sk);
 

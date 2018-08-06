@@ -101,6 +101,11 @@ void mon_net_action_default(struct sock *sk, struct sk_buff *skb){
 	return;
 }
 
+/* default function for record_fin_seq */
+void record_fin_seq_default(struct sock *sk){
+	return;
+}
+
 /* default function for to_replay_server */
 int to_replay_server_default(struct sock *sk){
 	return 0;
@@ -130,6 +135,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
 	.mon_net_action = mon_net_action_default,
+	.record_fin_seq = record_fin_seq_default,
 	.to_replay_server = to_replay_server_default,
 	.read_jiffies = NULL,
 	.replay_jiffies = NULL,
@@ -173,6 +179,7 @@ struct derand_record_ops derand_record_ops = {
 	.tasklet = tasklet_default,
 	.tasklet_before_lock = tasklet_before_lock_default,
 	.mon_net_action = mon_net_action_default,
+	.record_fin_seq = record_fin_seq_default,
 	.to_replay_server = to_replay_server_default,
 	.read_jiffies = NULL,
 	.replay_jiffies = NULL,
