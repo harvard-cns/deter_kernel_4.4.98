@@ -2143,7 +2143,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 
 	max_segs = tcp_tso_autosize(sk, mss_now);
 	#if DERAND_ENABLE
-	derand_general_event(sk, 50, (sent_pkts<<32) | max_segs);
+	derand_general_event(sk, 50, ((u64)sent_pkts<<32) | max_segs);
 	#endif
 	while ((skb = tcp_send_head(sk))) {
 		unsigned int limit;
@@ -2399,8 +2399,13 @@ void tcp_send_loss_probe(struct sock *sk)
 	if (WARN_ON(!skb))
 		goto rearm_timer;
 
+	#if DERAND_ENABLE
+	if (derand_skb_still_in_host_queue(sk, skb, skb_still_in_host_queue(sk, skb)))
+		goto rearm_timer;
+	#else
 	if (skb_still_in_host_queue(sk, skb))
 		goto rearm_timer;
+	#endif
 
 	pcount = tcp_skb_pcount(skb);
 	if (WARN_ON(!pcount))
@@ -2739,7 +2744,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	derand_general_event(sk, 320, 0);
 	#endif
 	#if DERAND_ENABLE
-	if (derand_skb_still_in_host_queue(sk, skb_still_in_host_queue(sk, skb)))
+	if (derand_skb_still_in_host_queue(sk, skb, skb_still_in_host_queue(sk, skb)))
 		return -EBUSY;
 	#else
 	if (skb_still_in_host_queue(sk, skb))

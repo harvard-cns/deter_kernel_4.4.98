@@ -117,7 +117,7 @@ struct derand_record_ops{
 
 	/* For a call to skb_still_in_host_queue */
 	void (*record_skb_still_in_host_queue)(const struct sock *sk, bool ret);
-	bool (*replay_skb_still_in_host_queue)(const struct sock *sk);
+	bool (*replay_skb_still_in_host_queue)(const struct sock *sk, const struct sk_buff *skb);
 
 	/* A general event */
 	void (*general_event)(const struct sock *sk, int loc, u64 data);
@@ -248,11 +248,11 @@ static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl,
 }
 
 /* A call to skb_still_in_host_queue */
-#define derand_skb_still_in_host_queue(sk, call) \
+#define derand_skb_still_in_host_queue(sk, skb, call) \
 	({ \
 		bool ret; \
 		if (sk->replayer && derand_record_ops.replay_skb_still_in_host_queue) \
-			ret = derand_record_ops.replay_skb_still_in_host_queue(sk); \
+			ret = derand_record_ops.replay_skb_still_in_host_queue(sk, skb); \
 		else { \
 			ret = (call); \
 			if (sk->recorder && derand_record_ops.record_skb_still_in_host_queue) \
