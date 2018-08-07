@@ -115,6 +115,10 @@ struct derand_record_ops{
 	void (*skb_mstamp_get)(struct sock *sk, struct skb_mstamp *cl, int loc);
 	// we do not need special replay function for mstamp, because the above one can return value to cl
 
+	/* For a call to skb_still_in_host_queue */
+	void (*record_skb_still_in_host_queue)(const struct sock *sk, bool ret);
+	bool (*replay_skb_still_in_host_queue)(const struct sock *sk);
+
 	/* A general event */
 	void (*general_event)(const struct sock *sk, int loc, u64 data);
 
@@ -242,6 +246,20 @@ static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl,
 	if (sk->recorder && derand_record_ops.skb_mstamp_get)
 		derand_record_ops.skb_mstamp_get(sk, cl, loc);
 }
+
+/* A call to skb_still_in_host_queue */
+#define derand_skb_still_in_host_queue(sk, call) \
+	({ \
+		bool ret; \
+		if (sk->replayer && derand_record_ops.replay_skb_still_in_host_queue) \
+			ret = derand_record_ops.replay_skb_still_in_host_queue(sk); \
+		else { \
+			ret = (call); \
+			if (sk->recorder && derand_record_ops.record_skb_still_in_host_queue) \
+				derand_record_ops.record_skb_still_in_host_queue(sk, ret); \
+		} \
+		ret; \
+	})
 
 /* A general event */
 static inline void derand_general_event(const struct sock *sk, int loc, u64 data){

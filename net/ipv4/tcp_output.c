@@ -2738,8 +2738,13 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	#if DERAND_ENABLE
 	derand_general_event(sk, 320, 0);
 	#endif
+	#if DERAND_ENABLE
+	if (derand_skb_still_in_host_queue(sk, skb_still_in_host_queue(sk, skb)))
+		return -EBUSY;
+	#else
 	if (skb_still_in_host_queue(sk, skb))
 		return -EBUSY;
+	#endif
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 321, ((u64)TCP_SKB_CB(skb)->seq << 32) | tp->snd_una);

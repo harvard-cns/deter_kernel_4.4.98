@@ -150,6 +150,8 @@ struct derand_record_ops derand_record_ops_default = {
 	.sk_sockets_allocated_read_positive = NULL,
 	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
+	.record_skb_still_in_host_queue = NULL,
+	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops_default);
@@ -194,6 +196,8 @@ struct derand_record_ops derand_record_ops = {
 	.sk_sockets_allocated_read_positive = NULL,
 	.replay_sk_socket_allocated_read_positive = NULL,
 	.skb_mstamp_get = NULL,
+	.record_skb_still_in_host_queue = NULL,
+	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops);
