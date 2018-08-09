@@ -839,6 +839,9 @@ void tcp_release_cb(struct sock *sk)
 			return;
 		nflags = flags & ~TCP_DEFERRED_ALL;
 	} while (cmpxchg(&tp->tsq_flags, flags, nflags) != flags);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_RELEASE_CB, 0, 0b1, flags);
+	#endif
 
 	if (flags & (1UL << TCP_TSQ_DEFERRED))
 		tcp_tsq_handler(sk);
@@ -958,6 +961,9 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	struct tcphdr *th;
 	int err;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TRANSMIT_SKB, 0, 0b00, clone_it, gfp_mask);
+	#endif
 	BUG_ON(!skb || !tcp_skb_pcount(skb));
 
 	if (clone_it) {
@@ -1076,6 +1082,9 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	/* Our usage of tstamp should remain private */
 	skb->tstamp.tv64 = 0;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TRANSMIT_SKB, 1, 0b0000, tcb->seq, tcb->end_seq, tcb->ack_seq, tcp_skb_pcount(skb));
+	#endif
 	/* Cleanup our debris for IP stacks */
 	memset(skb->cb, 0, max(sizeof(struct inet_skb_parm),
 			       sizeof(struct inet6_skb_parm)));
@@ -1585,6 +1594,9 @@ static bool tcp_minshall_check(const struct tcp_sock *tp)
 static void tcp_minshall_update(struct tcp_sock *tp, unsigned int mss_now,
 				const struct sk_buff *skb)
 {
+	#if DERAND_ENABLE
+	derand_advanced_event((struct sock*)tp, DR_TCP_MINSHALL_UPDATE, 0, 0b00000, skb->len, tcp_skb_pcount(skb), mss_now, tp->snd_sml, TCP_SKB_CB(skb)->end_seq);
+	#endif
 	if (skb->len < tcp_skb_pcount(skb) * mss_now)
 		tp->snd_sml = TCP_SKB_CB(skb)->end_seq;
 }
@@ -1715,6 +1727,9 @@ static inline bool tcp_nagle_test(const struct tcp_sock *tp, const struct sk_buf
 	 * This is implemented in the callers, where they modify the 'nonagle'
 	 * argument based upon the location of SKB in the send queue.
 	 */
+	#if DERAND_ENABLE
+	derand_advanced_event((struct sock*)tp, DR_TCP_NAGLE_TEST, 0, 0b000, cur_mss, nonagle, skb->len, tp->packets_out, tp->snd_sml, tp->snd_una, tp->snd_nxt);
+	#endif
 	if (nonagle & TCP_NAGLE_PUSH)
 		return true;
 
@@ -2128,6 +2143,9 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 	int result;
 	bool is_cwnd_limited = false;
 	u32 max_segs;
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 0, 0b0000, mss_now, nonagle, push_one, gfp);
+	#endif
 
 	sent_pkts = 0;
 
@@ -2144,6 +2162,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 	max_segs = tcp_tso_autosize(sk, mss_now);
 	#if DERAND_ENABLE
 	derand_general_event(sk, 50, ((u64)sent_pkts<<32) | max_segs);
+	derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 1, 0b00, sent_pkts, max_segs);
 	#endif
 	while ((skb = tcp_send_head(sk))) {
 		unsigned int limit;
@@ -2152,6 +2171,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		BUG_ON(!tso_segs);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 51, tso_segs);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 2, 0b0, tso_segs);
 		#endif
 
 		if (unlikely(tp->repair) && tp->repair_queue == TCP_SEND_QUEUE) {
@@ -2174,6 +2194,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		}
 		#if DERAND_ENABLE
 		derand_general_event(sk, 52, cwnd_quota);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 3, 0b0, cwnd_quota);
 		#endif
 
 		if (unlikely(!tcp_snd_wnd_test(tp, skb, mss_now)))
@@ -2181,6 +2202,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 
 		#if DERAND_ENABLE
 		derand_general_event(sk, 53, mss_now);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 4, 0b0, tso_segs);
 		#endif
 		if (tso_segs == 1) {
 			if (unlikely(!tcp_nagle_test(tp, skb, mss_now,
@@ -2203,6 +2225,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 						    nonagle);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 54, limit);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 5, 0b0, limit);
 		#endif
 
 		if (skb->len > limit &&
@@ -2223,6 +2246,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		limit = min_t(u32, limit, sysctl_tcp_limit_output_bytes);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 55, limit);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 6, 0b000, limit, skb->truesize, sk->sk_pacing_rate);
 		#endif
 
 		#if DERAND_ENABLE
@@ -2258,17 +2282,22 @@ repair:
 		sent_pkts += tcp_skb_pcount(skb);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 56, sent_pkts);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 7, 0b0, sent_pkts);
 		#endif
 
 		if (push_one)
 			break;
 	}
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 8, 0b00, is_cwnd_limited, sent_pkts);
+	#endif
 	if (likely(sent_pkts)) {
 		if (tcp_in_cwnd_reduction(sk))
 			tp->prr_out += sent_pkts;
 		#if DERAND_ENABLE
 		derand_general_event(sk, 57, tp->prr_out);
+		derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 9, 0b0, tp->prr_out);
 		#endif
 
 		/* Send one loss probe per tail loss episode. */
@@ -2280,6 +2309,7 @@ repair:
 	}
 	#if DERAND_ENABLE
 	derand_general_event(sk, 58, tp->packets_out);
+	derand_advanced_event(sk, DR_TCP_WRITE_XMIT, 10, 0b0, tp->packets_out);
 	#endif
 	return !tp->packets_out && tcp_send_head(sk);
 }
@@ -2446,6 +2476,9 @@ void __tcp_push_pending_frames(struct sock *sk, unsigned int cur_mss,
 	 * In time closedown will finish, we empty the write queue and
 	 * all will be happy.
 	 */
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR___TCP_PUSH_PENDING_FRAMES, 0, 0b0, sk->sk_state);
+	#endif
 	if (unlikely(sk->sk_state == TCP_CLOSE))
 		return;
 
@@ -2463,6 +2496,9 @@ void tcp_push_one(struct sock *sk, unsigned int mss_now)
 
 	BUG_ON(!skb || skb->len < mss_now);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_PUSH_ONE, 0, 0b0, skb->len);
+	#endif
 	tcp_write_xmit(sk, mss_now, TCP_NAGLE_PUSH, 1, sk->sk_allocation);
 }
 
@@ -2719,6 +2755,9 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	unsigned int cur_mss;
 	int err;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 0, 0b000, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq, TCP_SKB_CB(skb)->ack_seq);
+	#endif
 	/* Inconslusive MTU probe */
 	if (icsk->icsk_mtup.probe_size) {
 		icsk->icsk_mtup.probe_size = 0;
@@ -2753,6 +2792,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 321, ((u64)TCP_SKB_CB(skb)->seq << 32) | tp->snd_una);
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 1, 0b0, tp->snd_una);
 	#endif
 	if (before(TCP_SKB_CB(skb)->seq, tp->snd_una)) {
 		if (before(TCP_SKB_CB(skb)->end_seq, tp->snd_una))
@@ -2770,6 +2810,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	cur_mss = tcp_current_mss(sk);
 	#if DERAND_ENABLE
 	derand_general_event(sk, 323, ((u64)cur_mss<<32)|tcp_wnd_end(tp));
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 2, 0b0, tcp_wnd_end(tp));
 	#endif
 
 	/* If receiver has shrunk his window, and skb is out of
@@ -2783,6 +2824,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 324, skb->len);
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 3, 0b0, skb->len, cur_mss);
 	#endif
 	if (skb->len > cur_mss) {
 		if (tcp_fragment(sk, skb, cur_mss, cur_mss, GFP_ATOMIC))
@@ -2791,6 +2833,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 		int oldpcount = tcp_skb_pcount(skb);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 325, oldpcount);
+		derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 4, 0b0, oldpcount);
 		#endif
 
 		if (unlikely(oldpcount > 1)) {
@@ -2813,6 +2856,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 326, 0);
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 5, 0b00, (int)((unsigned long)skb->data & 3), skb_headroom(skb));
 	#endif
 	/* make sure skb->data is aligned on arches that require it
 	 * and check if ack-trimming & collapsing extended the headroom
@@ -2835,6 +2879,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	}
 	#if DERAND_ENABLE
 	derand_general_event(sk, 327, err);
+	derand_advanced_event(sk, DR___TCP_RETRANSMIT_SKB, 6, 0b0, err);
 	#endif
 
 	if (likely(!err)) {
@@ -2853,6 +2898,9 @@ int tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	int err = __tcp_retransmit_skb(sk, skb);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_RETRANSMIT_SKB, 0, 0b0, err);
+	#endif
 	if (err == 0) {
 #if FASTRETRANS_DEBUG > 0
 		if (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_RETRANS) {
@@ -2923,6 +2971,9 @@ void tcp_xmit_retransmit_queue(struct sock *sk)
 	u32 last_lost;
 	int mib_idx;
 	int fwd_rexmitting = 0;
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_XMIT_RETRANSMIT_QUEUE, 0, 0b0000, tp->packets_out, tp->lost_out, tcp_packets_in_flight(tp), tp->snd_cwnd);
+	#endif
 
 	if (!tp->packets_out)
 		return;

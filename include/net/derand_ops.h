@@ -119,10 +119,16 @@ struct derand_record_ops{
 	void (*record_skb_still_in_host_queue)(const struct sock *sk, bool ret);
 	bool (*replay_skb_still_in_host_queue)(const struct sock *sk, const struct sk_buff *skb);
 
+	/* Following are for debug */
 	/* A general event */
 	void (*general_event)(const struct sock *sk, int loc, u64 data);
 
 	/* TODO: We left out orphan socket related things */
+
+	/******************************************
+	 * log
+	 *****************************************/
+	int (*log)(const struct sock *sk, const char *fmt, ...);
 };
 
 extern struct derand_record_ops derand_record_ops_default;

@@ -33,14 +33,27 @@ void sk_stream_write_space(struct sock *sk)
 	struct socket *sock = sk->sk_socket;
 	struct socket_wq *wq;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_SK_STREAM_WRITE_SPACE, 0, 0x0000, sk->sk_sndbuf, sk->sk_wmem_queued, tcp_sk(sk)->write_seq, tcp_sk(sk)->snd_nxt);
+	#endif
 	if (sk_stream_is_writeable(sk) && sock) {
 		clear_bit(SOCK_NOSPACE, &sock->flags);
 
 		rcu_read_lock();
 		wq = rcu_dereference(sk->sk_wq);
+		#if DERAND_ENABLE
+		bool has_sleeper = wq_has_sleeper(wq);
+		derand_advanced_event(sk, DR_SK_STREAM_WRITE_SPACE, 1, 0x0, (int)has_sleeper);
+		if (has_sleeper){
+			derand_record_ops.log(sk, "in sk_stream_write_space: &wq->wait=%x\n", (u64)&wq->wait);
+			wake_up_interruptible_poll(&wq->wait, POLLOUT |
+						POLLWRNORM | POLLWRBAND);
+		}
+		#else
 		if (wq_has_sleeper(wq))
 			wake_up_interruptible_poll(&wq->wait, POLLOUT |
 						POLLWRNORM | POLLWRBAND);
+		#endif
 		if (wq && wq->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
 			sock_wake_async(wq, SOCK_WAKE_SPACE, POLL_OUT);
 		rcu_read_unlock();
@@ -230,6 +243,9 @@ int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id)
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
+		#if DERAND_ENABLE
+		derand_record_ops.log(sk, "derand_sk_stream_wait_memory, &wait=%x, current_timeo=%ld\n", (u64)&wait, current_timeo);
+		#endif
 		derand_sk_wait_event(sk, &current_timeo, sk->sk_err ||
 						  (sk->sk_shutdown & SEND_SHUTDOWN) ||
 						  (sk_stream_memory_free(sk) &&

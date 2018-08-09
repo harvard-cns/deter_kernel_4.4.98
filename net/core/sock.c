@@ -2507,8 +2507,15 @@ EXPORT_SYMBOL(sk_send_sigurg);
 void sk_reset_timer(struct sock *sk, struct timer_list* timer,
 		    unsigned long expires)
 {
+	#if DERAND_ENABLE
+	if (!mod_timer(timer, expires)){
+		derand_advanced_event(sk, DR_SK_RESET_TIMER, 0, 0b1, expires);
+		sock_hold(sk);
+	}
+	#else
 	if (!mod_timer(timer, expires))
 		sock_hold(sk);
+	#endif
 }
 EXPORT_SYMBOL(sk_reset_timer);
 

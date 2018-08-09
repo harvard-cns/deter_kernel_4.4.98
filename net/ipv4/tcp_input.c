@@ -291,6 +291,9 @@ static void tcp_sndbuf_expand(struct sock *sk)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	int sndmem, per_mss;
 	u32 nr_segs;
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_SNDBUF_EXPAND, 0, 0b00000, tp->rx_opt.mss_clamp, tp->mss_cache, tp->snd_cwnd, tp->reordering, sk->sk_sndbuf);
+	#endif
 
 	/* Worst case is non GSO/TSO : each frame consumes one skb
 	 * and skb->head is kmalloced using power of two area of memory
@@ -5038,6 +5041,9 @@ static int tcp_prune_queue(struct sock *sk)
 static bool tcp_should_expand_sndbuf(const struct sock *sk)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_SHOULD_EXPAND_SNDBUF, 0, 0b00, tcp_packets_in_flight(tp), tp->snd_cwnd);
+	#endif
 
 	/* If the user specified a specific send buffer setting, do
 	 * not modify it.
@@ -5077,9 +5083,15 @@ static bool tcp_should_expand_sndbuf(const struct sock *sk)
 static void tcp_new_space(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_NEW_SPACE, 0, 0b0, sk->sk_sndbuf);
+	#endif
 
 	if (tcp_should_expand_sndbuf(sk)) {
 		tcp_sndbuf_expand(sk);
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_NEW_SPACE, 1, 0b0, sk->sk_sndbuf);
+		#endif
 		#if DERAND_ENABLE
 		tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 24);
 		#else
@@ -5092,10 +5104,16 @@ static void tcp_new_space(struct sock *sk)
 
 static void tcp_check_space(struct sock *sk)
 {
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_CHECK_SPACE, 0, 0b0, sock_flag(sk, SOCK_QUEUE_SHRUNK));
+	#endif
 	if (sock_flag(sk, SOCK_QUEUE_SHRUNK)) {
 		sock_reset_flag(sk, SOCK_QUEUE_SHRUNK);
 		/* pairs with tcp_poll() */
 		smp_mb__after_atomic();
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_CHECK_SPACE, 1, 0b0, sk->sk_socket? test_bit(SOCK_NOSPACE, &sk->sk_socket->flags) : -1);
+		#endif
 		if (sk->sk_socket &&
 		    test_bit(SOCK_NOSPACE, &sk->sk_socket->flags))
 			tcp_new_space(sk);
@@ -5104,6 +5122,9 @@ static void tcp_check_space(struct sock *sk)
 
 static inline void tcp_data_snd_check(struct sock *sk)
 {
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_DATA_SND_CHECK, 0, 0b0, 0);
+	#endif
 	tcp_push_pending_frames(sk);
 	tcp_check_space(sk);
 }
@@ -5397,6 +5418,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 		struct iphdr *iph = ip_hdr(skb);
 		struct tcphdr *tcph = (struct tcphdr *)((u32 *)iph + iph->ihl);
 		derand_general_event(sk, 100, ((u64)ntohl(tcph->seq) << 32) | ntohl(tcph->ack_seq));
+		derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 0, 0b00000, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq, TCP_SKB_CB(skb)->ack_seq, sk->sk_sndbuf, sk->sk_wmem_queued);
 	}
 	#endif
 	if (unlikely(!sk->sk_rx_dst))
@@ -5472,6 +5494,9 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 				tcp_ack(sk, skb, 0);
 				__kfree_skb(skb);
 				tcp_data_snd_check(sk);
+				#if DERAND_ENABLE
+				derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 1, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+				#endif
 				return;
 			} else { /* Header too small */
 				TCP_INC_STATS_BH(sock_net(sk), TCP_MIB_INERRS);
@@ -5546,6 +5571,9 @@ no_ack:
 			if (eaten)
 				kfree_skb_partial(skb, fragstolen);
 			sk->sk_data_ready(sk);
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 2, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+			#endif
 			return;
 		}
 	}
@@ -5561,8 +5589,15 @@ slow_path:
 	 *	Standard slow path.
 	 */
 
+	#if DERAND_ENABLE
+	if (!tcp_validate_incoming(sk, skb, th, 1)){
+		derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 3, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+		return;
+	}
+	#else
 	if (!tcp_validate_incoming(sk, skb, th, 1))
 		return;
+	#endif
 
 step5:
 	if (tcp_ack(sk, skb, FLAG_SLOWPATH | FLAG_UPDATE_TS_RECENT) < 0)
@@ -5578,6 +5613,9 @@ step5:
 
 	tcp_data_snd_check(sk);
 	tcp_ack_snd_check(sk);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 4, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#endif
 	return;
 
 csum_error:
@@ -5586,6 +5624,9 @@ csum_error:
 
 discard:
 	__kfree_skb(skb);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 5, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#endif
 }
 EXPORT_SYMBOL(tcp_rcv_established);
 

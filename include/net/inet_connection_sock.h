@@ -226,6 +226,9 @@ static inline void inet_csk_reset_xmit_timer(struct sock *sk, const int what,
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_INET_CSK_RESET_XMIT_TIMER, 0, 0b011, what, when, max_when);
+	#endif
 	if (when > max_when) {
 #ifdef INET_CSK_DEBUG
 		pr_debug("reset_xmit_timer: sk=%p %d when=0x%lx, caller=%p\n",

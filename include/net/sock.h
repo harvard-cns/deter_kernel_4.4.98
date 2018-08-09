@@ -869,6 +869,58 @@ extern bool (*derand_replay_effect_bool)(const struct sock *sk, int loc);
 	 	} \
 	 	ret; \
 	})
+
+// for advanced_event
+extern void (*advanced_event)(const struct sock *sk, u8 func_num, u8 loc, u8 fmt, int n, ...);
+
+enum derand_func_enum{
+	DR_TCP_SENDMSG = 0,
+	DR_TCP_RECVMSG = 1,
+	DR_TCP_CLOSE = 2,
+	DR_TCP_SNDBUF_EXPAND = 3,
+	DR_TCP_WRITE_XMIT = 4,
+	DR_TCP_PUSH = 5,
+	DR___TCP_PUSH_PENDING_FRAMES = 6,
+	DR_TCP_PUSH_ONE = 7,
+	DR_TCP_NAGLE_TEST = 8,
+	DR_TCP_TRANSMIT_SKB = 9,
+	DR_SK_STREAM_ALLOC_SKB = 10,
+	DR_SK_STREAM_MODERATE_SNDBUF = 11,
+	DR_TCP_RCV_ESTABLISHED = 12,
+	DR_TCP_ACK = 13,
+	DR_TCP_RELEASE_CB = 14,
+	DR___TCP_RETRANSMIT_SKB = 15,
+	DR_TCP_RETRANSMIT_SKB = 16,
+	DR_TCP_XMIT_RETRANSMIT_QUEUE = 17,
+	DR_INET_CSK_RESET_XMIT_TIMER = 18,
+	DR_SK_RESET_TIMER = 19,
+	DR_TCP_WRITE_TIMER = 20,
+	DR_TCP_WRITE_TIMER_HANDLER = 21,
+	DR_SK_STREAM_MEMORY_FREE = 22,
+	DR_SK_STREAM_WRITE_SPACE = 23,
+	DR_TCP_DELACK_TIMER = 24,
+	DR_TCP_DELACK_TIMER_HANDLER = 25,
+	DR_TCP_MINSHALL_UPDATE = 26,
+	DR_TCP_CHECK_SPACE = 27,
+	DR_TCP_NEW_SPACE = 28,
+	DR_TCP_SHOULD_EXPAND_SNDBUF = 29,
+	DR_TCP_DATA_SND_CHECK = 30,
+	DR_N_FUNC
+};
+
+#define PP_NARG(...) PP_NARG_(__VA_ARGS__,PP_RSEQ_N())
+#define PP_NARG_(...) PP_ARG_N(__VA_ARGS__)
+#define PP_ARG_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,N,...) N
+#define PP_RSEQ_N() 16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
+
+#define derand_advanced_event(sk, func_num, loc, fmt, ...) \
+	do{ \
+		if (advanced_event){ \
+			if ((sk)->recorder || (sk)->replayer) \
+				advanced_event(sk, func_num, loc, fmt, PP_NARG(__VA_ARGS__), __VA_ARGS__); \
+		} \
+	} while (0)
+
 #endif
 
 /* The per-socket spinlock must be held here. */
@@ -1171,6 +1223,9 @@ static inline struct cg_proto *parent_cg_proto(struct proto *proto,
 
 static inline bool sk_stream_memory_free(const struct sock *sk)
 {
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_SK_STREAM_MEMORY_FREE, 0, 0b00, sk->sk_wmem_queued, sk->sk_sndbuf);
+	#endif
 	if (sk->sk_wmem_queued >= sk->sk_sndbuf)
 		return false;
 
@@ -2147,6 +2202,9 @@ static inline void sk_stream_moderate_sndbuf(struct sock *sk)
 		sk->sk_sndbuf = min(sk->sk_sndbuf, sk->sk_wmem_queued >> 1);
 		sk->sk_sndbuf = max_t(u32, sk->sk_sndbuf, SOCK_MIN_SNDBUF);
 	}
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_SK_STREAM_MODERATE_SNDBUF, 0, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#endif
 }
 
 struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,

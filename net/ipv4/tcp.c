@@ -670,6 +670,9 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_PUSH, 0, 0b00, flags, mss_now, nonagle, size_goal);
+	#endif
 	if (!tcp_send_head(sk))
 		return;
 
@@ -679,6 +682,9 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 
 	tcp_mark_urg(tp, flags);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_PUSH, 1, 0b00, skb->len, TCP_SKB_CB(skb)->seq);
+	#endif
 	if (tcp_should_autocork(sk, skb, size_goal)) {
 
 		/* avoid atomic op if TSQ_THROTTLED bit is already set */
@@ -840,6 +846,9 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 
 	/* The TCP header must be at least 32-bit aligned.  */
 	size = ALIGN(size, 4);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 0, 0b000, size, gfp, (int)force_schedule);
+	#endif
 
 	#if DERAND_ENABLE
 	if (unlikely(derand_tcp_under_memory_pressure(sk)))
@@ -865,8 +874,14 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 			 * available to the caller, no more, no less.
 			 */
 			skb->reserved_tailroom = skb->end - skb->tail - size;
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 1, 0b0, skb->reserved_tailroom);
+			#endif
 			return skb;
 		}
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 2, 0b0, skb->truesize);
+		#endif
 		__kfree_skb(skb);
 	} else {
 		sk->sk_prot->enter_memory_pressure(sk);
@@ -1138,11 +1153,13 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	flags = msg->msg_flags;
 	#if DERAND_ENABLE
 	derand_general_event(sk, 0, flags);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 0, 0b00, flags, size);
 	#endif
 	if (flags & MSG_FASTOPEN) {
 		err = tcp_sendmsg_fastopen(sk, msg, &copied_syn, size);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 1, err);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 1, 0b00, copied_syn, err);
 		#endif
 		if (err == -EINPROGRESS && copied_syn > 0)
 			goto out;
@@ -1151,6 +1168,9 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	}
 
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 2, 0b0, timeo);
+	#endif
 
 	/* Wait for a connection to finish. One exception is TCP Fast Open
 	 * (passive side) where data is allowed to be sent before a connection
@@ -1161,6 +1181,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		err = sk_stream_wait_connect(sk, &timeo);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 2, err);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 3, 0b00, err, sk->sk_state);
 		#endif
 		if (err != 0)
 			goto do_error;
@@ -1169,9 +1190,13 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	if (unlikely(tp->repair)) {
 		#if DERAND_ENABLE
 		derand_general_event(sk, 3, err);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 4, 0b00, tp->repair, tp->repair_queue);
 		#endif
 		if (tp->repair_queue == TCP_RECV_QUEUE) {
 			copied = tcp_send_rcvq(sk, msg, size);
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 5, 0b0, copied);
+			#endif
 			goto out_nopush;
 		}
 
@@ -1188,6 +1213,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	mss_now = tcp_send_mss(sk, &size_goal, flags);
 	#if DERAND_ENABLE
 	derand_general_event(sk, 4, (((u64)mss_now) << 32) | size_goal);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 6, 0b0000, mss_now, size_goal, sk->sk_err, sk->sk_shutdown);
 	#endif
 
 	/* Ok commence sending. */
@@ -1200,6 +1226,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	sg = !!(sk->sk_route_caps & NETIF_F_SG);
 	#if DERAND_ENABLE
 	derand_general_event(sk, 5, sg);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 7, 0b0, (int)sg);
 	#endif
 
 	while (msg_data_left(msg)) {
@@ -1209,6 +1236,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		skb = tcp_write_queue_tail(sk);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 6, ((u64)msg_data_left(msg) << 32) | size_goal);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 8, 0b00, (u32)msg_data_left(msg), size_goal);
 		#endif
 		if (tcp_send_head(sk)) {
 			if (skb->ip_summed == CHECKSUM_NONE)
@@ -1216,6 +1244,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 			copy = max - skb->len;
 			#if DERAND_ENABLE
 			derand_general_event(sk, 7, ((u64)max<<32) | skb->len);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 9, 0b000, skb->ip_summed, max, skb->len);
 			#endif
 		}
 
@@ -1226,12 +1255,14 @@ new_segment:
 			 */
 			#if DERAND_ENABLE
 			derand_general_event(sk, 8, copy);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 10, 0b0, copy);
 			#endif
 			if (!sk_stream_memory_free(sk))
 				goto wait_for_sndbuf;
 
 			#if DERAND_ENABLE
 			derand_general_event(sk, 9, sk->sk_allocation);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 11, 0b0, sk->sk_allocation);
 			#endif
 			skb = sk_stream_alloc_skb(sk,
 						  select_size(sk, sg),
@@ -1251,6 +1282,7 @@ new_segment:
 			max = size_goal;
 			#if DERAND_ENABLE
 			derand_general_event(sk, 10, size_goal);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 12, 0b0, size_goal);
 			#endif
 
 			/* All packets are restored as if they have
@@ -1263,6 +1295,7 @@ new_segment:
 
 		#if DERAND_ENABLE
 		derand_general_event(sk, 11, ((u64)copy << 32) | msg_data_left(msg));
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 13, 0b00, copy, msg_data_left(msg));
 		#endif
 		/* Try to append data to the end of skb. */
 		if (copy > msg_data_left(msg))
@@ -1270,11 +1303,12 @@ new_segment:
 
 		/* Where to copy to? */
 		if (skb_availroom(skb) > 0) {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 12, skb_availroom(skb));
-			#endif
 			/* We have some space in skb head. Superb! */
 			copy = min_t(int, copy, skb_availroom(skb));
+			#if DERAND_ENABLE
+			derand_general_event(sk, 12, skb_availroom(skb));
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 14, 0b00, copy, skb_availroom(skb));
+			#endif
 			err = skb_add_data_nocache(sk, skb, &msg->msg_iter, copy);
 			if (err)
 				goto do_fault;
@@ -1285,6 +1319,7 @@ new_segment:
 
 			#if DERAND_ENABLE
 			derand_general_event(sk, 13, i);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 15, 0b0, i);
 			#endif
 			if (!sk_page_frag_refill(sk, pfrag))
 				goto wait_for_memory;
@@ -1293,10 +1328,12 @@ new_segment:
 					      pfrag->offset)) {
 				#if DERAND_ENABLE
 				derand_general_event(sk, 14, pfrag->offset);
+				derand_advanced_event(sk, DR_TCP_SENDMSG, 16, 0b00, pfrag->size, pfrag->offset);
 				#endif
 				if (i >= sysctl_max_skb_frags || !sg) {
 					#if DERAND_ENABLE
 					derand_general_event(sk, 15, 0);
+					derand_advanced_event(sk, DR_TCP_SENDMSG, 17, 0b00, sysctl_max_skb_frags, sg);
 					#endif
 					tcp_mark_push(tp, skb);
 					goto new_segment;
@@ -1306,6 +1343,7 @@ new_segment:
 
 			#if DERAND_ENABLE
 			derand_general_event(sk, 16, ((u64)copy<<32) | (pfrag->size - pfrag->offset));
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 18, 0b000, copy, pfrag->size, pfrag->offset);
 			#endif
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
 
@@ -1318,6 +1356,7 @@ new_segment:
 						       copy);
 			#if DERAND_ENABLE
 			derand_general_event(sk, 17, err);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 19, 0b0, err);
 			#endif
 			if (err)
 				goto do_error;
@@ -1336,6 +1375,9 @@ new_segment:
 			pfrag->offset += copy;
 		}
 
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 20, 0b0, copied);
+		#endif
 		if (!copied)
 			TCP_SKB_CB(skb)->tcp_flags &= ~TCPHDR_PSH;
 
@@ -1345,21 +1387,24 @@ new_segment:
 
 		copied += copy;
 		if (!msg_data_left(msg)) {
-			tcp_tx_timestamp(sk, skb);
 			#if DERAND_ENABLE
 			derand_general_event(sk, 19, 0);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 21, 0b0, sk->sk_tsflags);
 			#endif
+			tcp_tx_timestamp(sk, skb);
 			goto out;
 		}
 
 		#if DERAND_ENABLE
 		derand_general_event(sk, 20, copied);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 22, 0b0000, skb->len, max, copied, TCP_SKB_CB(skb)->end_seq);
 		#endif
 		if (skb->len < max || (flags & MSG_OOB) || unlikely(tp->repair))
 			continue;
 
 		#if DERAND_ENABLE
 		derand_general_event(sk, 21, skb->len);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 23, 0b000, tp->write_seq, tp->pushed_seq, tp->max_window);
 		#endif
 		if (forced_push(tp)) {
 			tcp_mark_push(tp, skb);
@@ -1383,6 +1428,7 @@ wait_for_sndbuf:
 wait_for_memory:
 		#if DERAND_ENABLE
 		derand_general_event(sk, 25, copied);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 24, 0b0, copied);
 		#endif
 		if (copied)
 			tcp_push(sk, flags & ~MSG_MORE, mss_now,
@@ -1390,6 +1436,7 @@ wait_for_memory:
 
 		#if DERAND_ENABLE
 		err = derand_sk_stream_wait_memory(sk, &timeo, sc_id | (6 << 29));
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 25, 0b0, timeo);
 		#else
 		err = sk_stream_wait_memory(sk, &timeo);
 		#endif /* DERAND_ENABLE */
@@ -1399,17 +1446,20 @@ wait_for_memory:
 		mss_now = tcp_send_mss(sk, &size_goal, flags);
 		#if DERAND_ENABLE
 		derand_general_event(sk, 26, mss_now);
+		derand_advanced_event(sk, DR_TCP_SENDMSG, 26, 0b00, mss_now, size_goal);
 		#endif
 	}
 
 out:
 	#if DERAND_ENABLE
 	derand_general_event(sk, 27, copied);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 27, 0b0, copied);
 	#endif
 	if (copied)
 		tcp_push(sk, flags, mss_now, tp->nonagle, size_goal);
 out_nopush:
 	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 28, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
 	derand_release_sock(sk, sc_id | (1 << 29));
 	#else
 	release_sock(sk);
@@ -1419,6 +1469,7 @@ out_nopush:
 do_fault:
 	#if DERAND_ENABLE
 	derand_general_event(sk, 28, skb->len);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 29, 0b0, skb->len);
 	#endif
 	if (!skb->len) {
 		tcp_unlink_write_queue(skb, sk);
@@ -1432,18 +1483,21 @@ do_fault:
 do_error:
 	#if DERAND_ENABLE
 	derand_general_event(sk, 29, (((u64)copied_syn) << 32) | copied);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 30, 0b00, copied_syn, copied);
 	#endif
 	if (copied + copied_syn)
 		goto out;
 out_err:
 	#if DERAND_ENABLE
 	derand_general_event(sk, 30, err);
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 31, 0b0, err);
 	#endif
 	err = sk_stream_error(sk, flags, err);
 	/* make sure we wake any epoll edge trigger waiter */
 	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
 		sk->sk_write_space(sk);
 	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_SENDMSG, 32, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
 	derand_release_sock(sk, sc_id | (2 << 29));
 	#else
 	release_sock(sk);

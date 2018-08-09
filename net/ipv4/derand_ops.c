@@ -111,6 +111,11 @@ int to_replay_server_default(struct sock *sk){
 	return 0;
 }
 
+/* default function for log */
+int log_default(const struct sock *sk, const char *fmt, ...){
+	return 0;
+}
+
 /* Default operations.
  * All do nothing */
 struct derand_record_ops derand_record_ops_default = {
@@ -153,6 +158,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.record_skb_still_in_host_queue = NULL,
 	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
+	.log = log_default,
 };
 EXPORT_SYMBOL(derand_record_ops_default);
 
@@ -199,6 +205,7 @@ struct derand_record_ops derand_record_ops = {
 	.record_skb_still_in_host_queue = NULL,
 	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
+	.log = log_default,
 };
 EXPORT_SYMBOL(derand_record_ops);
 
@@ -207,5 +214,8 @@ EXPORT_SYMBOL(derand_record_effect_bool);
 
 bool (*derand_replay_effect_bool)(const struct sock *sk, int loc) = NULL;
 EXPORT_SYMBOL(derand_replay_effect_bool);
+
+void (*advanced_event)(const struct sock *sk, u8 func_num, u8 loc, u8 fmt, int n, ...) = NULL;
+EXPORT_SYMBOL(advanced_event);
 
 #endif /* DERAND_ENABLE */

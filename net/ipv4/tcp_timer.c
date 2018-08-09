@@ -260,6 +260,9 @@ void tcp_delack_timer_handler(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 0, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
+	#endif
 	sk_mem_reclaim_partial(sk);
 
 	if (((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN)) ||
@@ -309,6 +312,10 @@ out:
 	if (tcp_under_memory_pressure(sk))
 	#endif
 		sk_mem_reclaim(sk);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 1, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
+	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 2, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#endif
 }
 
 static void tcp_delack_timer(unsigned long data)
@@ -321,6 +328,7 @@ static void tcp_delack_timer(unsigned long data)
 	bh_lock_sock(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.delack_timer(sk);
+	derand_advanced_event(sk, DR_TCP_DELACK_TIMER, 0, 0b0, sock_owned_by_user(sk));
 	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_delack_timer_handler(sk);
@@ -583,6 +591,7 @@ void tcp_write_timer_handler(struct sock *sk)
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 300, icsk->icsk_timeout);
+	derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 0, 0x1, icsk->icsk_timeout);
 	#endif
 	#if DERAND_ENABLE
 	if (time_after(icsk->icsk_timeout, derand_jiffies(sk, 9))) {
@@ -595,6 +604,7 @@ void tcp_write_timer_handler(struct sock *sk)
 
 	#if DERAND_ENABLE
 	derand_general_event(sk, 301, icsk->icsk_pending);
+	derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 1, 0x0, icsk->icsk_pending);
 	#endif
 	event = icsk->icsk_pending;
 
@@ -616,6 +626,12 @@ void tcp_write_timer_handler(struct sock *sk)
 	}
 
 out:
+	#if DERAND_ENABLE
+	{
+		struct tcp_sock *tp = tcp_sk(sk);
+		derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 2, 0x00000000, sk->sk_sndbuf, sk->sk_wmem_queued, tp->packets_out, tp->lost_out, tcp_packets_in_flight(tp), tp->write_seq, tp->pushed_seq, tp->snd_una);
+	}
+	#endif
 	sk_mem_reclaim(sk);
 }
 
@@ -629,6 +645,7 @@ static void tcp_write_timer(unsigned long data)
 	bh_lock_sock(sk);
 	#if DERAND_ENABLE
 	derand_record_ops.write_timer(sk);
+	derand_advanced_event(sk, DR_TCP_WRITE_TIMER, 0, 0b0, sock_owned_by_user(sk));
 	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_write_timer_handler(sk);
