@@ -157,8 +157,6 @@ struct derand_record_ops derand_record_ops_default = {
 	.skb_mstamp_get = NULL,
 	.record_skb_still_in_host_queue = NULL,
 	.replay_skb_still_in_host_queue = NULL,
-	.record_mod_timer = NULL,
-	.replay_mod_timer = NULL,
 	.general_event = NULL,
 	.log = log_default,
 };
@@ -206,8 +204,6 @@ struct derand_record_ops derand_record_ops = {
 	.skb_mstamp_get = NULL,
 	.record_skb_still_in_host_queue = NULL,
 	.replay_skb_still_in_host_queue = NULL,
-	.record_mod_timer = NULL,
-	.replay_mod_timer = NULL,
 	.general_event = NULL,
 	.log = log_default,
 };

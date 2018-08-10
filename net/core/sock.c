@@ -2508,7 +2508,7 @@ void sk_reset_timer(struct sock *sk, struct timer_list* timer,
 		    unsigned long expires)
 {
 	#if DERAND_ENABLE
-	if (!derand_mod_timer(sk, timer, expires)){
+	if (derand_effect_bool(sk, 2, !mod_timer(timer, expires))){
 		derand_advanced_event(sk, DR_SK_RESET_TIMER, 0, 0b1, expires);
 		sock_hold(sk);
 	}
