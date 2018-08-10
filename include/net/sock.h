@@ -913,6 +913,7 @@ enum derand_func_enum{
 #define PP_ARG_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,N,...) N
 #define PP_RSEQ_N() 16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 
+#if 1
 #define derand_advanced_event(sk, func_num, loc, fmt, ...) \
 	do{ \
 		if (advanced_event){ \
@@ -920,6 +921,9 @@ enum derand_func_enum{
 				advanced_event(sk, func_num, loc, fmt, PP_NARG(__VA_ARGS__), __VA_ARGS__); \
 		} \
 	} while (0)
+#else
+#define derand_advanced_event(sk, func_num, loc, fmt, ...) do{}while(0)
+#endif
 
 #endif
 
