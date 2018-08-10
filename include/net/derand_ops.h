@@ -117,7 +117,11 @@ struct derand_record_ops{
 
 	/* For a call to skb_still_in_host_queue */
 	void (*record_skb_still_in_host_queue)(const struct sock *sk, bool ret);
-	bool (*replay_skb_still_in_host_queue)(const struct sock *sk, const struct sk_buff *skb);
+	bool (*replay_skb_still_in_host_queue)(const struct sock *sk, const struct sk_buff *skb); // we need skb, because the replay should wait for skb_fclone_busy(sk, skb) to be false (if false)
+
+	/* For a call to mod_timer, we need to record its return value */
+	void (*record_mod_timer)(const struct sock *sk, bool ret);
+	bool (*replay_mod_timer)(const struct sock *sk);
 
 	/* Following are for debug */
 	/* A general event */
@@ -263,6 +267,20 @@ static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl,
 			ret = (call); \
 			if (sk->recorder && derand_record_ops.record_skb_still_in_host_queue) \
 				derand_record_ops.record_skb_still_in_host_queue(sk, ret); \
+		} \
+		ret; \
+	})
+
+/* A call to mod_timer */
+#define derand_mod_timer(sk, timer, expires) \
+	({ \
+		bool ret; \
+		if (sk->replayer && derand_record_ops.replay_mod_timer) \
+			ret = derand_record_ops.replay_mod_timer(sk); \
+		else { \
+			ret = mod_timer(timer, expires); \
+			if (sk->recorder && derand_record_ops.record_mod_timer) \
+				derand_record_ops.record_mod_timer(sk, ret); \
 		} \
 		ret; \
 	})
