@@ -1255,7 +1255,7 @@ new_segment:
 			 */
 			#if DERAND_ENABLE
 			derand_general_event(sk, 8, copy);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 10, 0b0, copy);
+			derand_advanced_event(sk, DR_TCP_SENDMSG, 10, 0b000, copy, sk->sk_wmem_queued, sk->sk_sndbuf);
 			#endif
 			if (!sk_stream_memory_free(sk))
 				goto wait_for_sndbuf;

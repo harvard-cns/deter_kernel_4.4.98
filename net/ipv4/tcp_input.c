@@ -5112,11 +5112,13 @@ static void tcp_check_space(struct sock *sk)
 		/* pairs with tcp_poll() */
 		smp_mb__after_atomic();
 		#if DERAND_ENABLE
-		derand_advanced_event(sk, DR_TCP_CHECK_SPACE, 1, 0b0, sk->sk_socket? test_bit(SOCK_NOSPACE, &sk->sk_socket->flags) : -1);
-		#endif
+		if (derand_effect_bool(sk, 3, sk->sk_socket && test_bit(SOCK_NOSPACE, &sk->sk_socket->flags)))
+			tcp_new_space(sk);
+		#else
 		if (sk->sk_socket &&
 		    test_bit(SOCK_NOSPACE, &sk->sk_socket->flags))
 			tcp_new_space(sk);
+		#endif
 	}
 }
 

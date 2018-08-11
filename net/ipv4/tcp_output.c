@@ -1521,7 +1521,12 @@ static void tcp_cwnd_application_limited(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	if (inet_csk(sk)->icsk_ca_state == TCP_CA_Open &&
-	    sk->sk_socket && !test_bit(SOCK_NOSPACE, &sk->sk_socket->flags)) {
+		#if DERAND_ENABLE
+		derand_effect_bool(sk, 15, sk->sk_socket && !test_bit(SOCK_NOSPACE, &sk->sk_socket->flags))
+		#else
+		sk->sk_socket && !test_bit(SOCK_NOSPACE, &sk->sk_socket->flags)
+		#endif
+		){
 		/* Limited by application or receiver window. */
 		u32 init_win = tcp_init_cwnd(tp, __sk_dst_get(sk));
 		u32 win_used = max(tp->snd_cwnd_used, init_win);

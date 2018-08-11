@@ -220,6 +220,9 @@ int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id)
 	bool noblock = (*timeo_p ? false : true);
 	DEFINE_WAIT(wait);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_SK_STREAM_WRITE_SPACE, 0, 0b00, sk->sk_wmem_queued, sk->sk_sndbuf);
+	#endif
 	if (sk_stream_memory_free(sk))
 		current_timeo = vm_wait = (prandom_u32() % (HZ / 5)) + 2;
 
@@ -238,6 +241,9 @@ int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id)
 		if (signal_pending(current))
 			goto do_interrupted;
 		sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_SK_STREAM_WRITE_SPACE, 1, 0b00, sk->sk_wmem_queued, sk->sk_sndbuf);
+		#endif
 		if (sk_stream_memory_free(sk) && !vm_wait)
 			break;
 

@@ -896,7 +896,7 @@ enum derand_func_enum{
 	DR_SK_RESET_TIMER = 19,
 	DR_TCP_WRITE_TIMER = 20,
 	DR_TCP_WRITE_TIMER_HANDLER = 21,
-	DR_SK_STREAM_MEMORY_FREE = 22,
+	DR_SK_STREAM_WAIT_MEMORY = 22,
 	DR_SK_STREAM_WRITE_SPACE = 23,
 	DR_TCP_DELACK_TIMER = 24,
 	DR_TCP_DELACK_TIMER_HANDLER = 25,
@@ -1227,9 +1227,6 @@ static inline struct cg_proto *parent_cg_proto(struct proto *proto,
 
 static inline bool sk_stream_memory_free(const struct sock *sk)
 {
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_SK_STREAM_MEMORY_FREE, 0, 0b00, sk->sk_wmem_queued, sk->sk_sndbuf);
-	#endif
 	if (sk->sk_wmem_queued >= sk->sk_sndbuf)
 		return false;
 
