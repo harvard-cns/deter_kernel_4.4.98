@@ -577,6 +577,9 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 	struct inet_sock *inet = inet_sk(sk);
 	int val = 0, err;
 	bool needs_rtnl = setsockopt_needs_rtnl(optname);
+	#if DERAND_ENABLE
+	u32 sc_id;
+	#endif
 
 	switch (optname) {
 	case IP_PKTINFO:
@@ -622,7 +625,13 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 	err = 0;
 	if (needs_rtnl)
 		rtnl_lock();
+	#if DERAND_ENABLE
+	// Only from here this setsockopt is useful.
+	sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+	derand_lock_sock(sk, sc_id | (0 << 29));
+	#else
 	lock_sock(sk);
+	#endif
 
 	switch (optname) {
 	case IP_OPTIONS:
@@ -1158,13 +1167,21 @@ mc_msf_out:
 		err = -ENOPROTOOPT;
 		break;
 	}
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id | (1 << 29));
+	#else
 	release_sock(sk);
+	#endif
 	if (needs_rtnl)
 		rtnl_unlock();
 	return err;
 
 e_inval:
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id | (2 << 29));
+	#else
 	release_sock(sk);
+	#endif
 	if (needs_rtnl)
 		rtnl_unlock();
 	return -EINVAL;

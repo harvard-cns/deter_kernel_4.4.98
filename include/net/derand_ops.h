@@ -33,6 +33,9 @@ struct derand_record_ops{
 	/* A new tcp_close sockcall. Return the sockcall ID */
 	u32 (*new_close)(struct sock *sk, long timeout);
 
+	/* A new setsockopt. Return sockcall ID */
+	u32 (*new_setsockopt)(struct sock *sk, int level, int optname, char __user *optval, unsigned int optlen);
+
 	/* A new event that a sockcall acquire a spinlock. sc_id: sockcall ID */
 	void (*sockcall_lock)(struct sock *sk, u32 sc_id);
 

@@ -696,6 +696,9 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 	int valbool;
 	struct linger ling;
 	int ret = 0;
+	#if DERAND_ENABLE
+	u32 sc_id;
+	#endif
 
 	/*
 	 *	Options without arguments
@@ -712,7 +715,13 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 
 	valbool = val ? 1 : 0;
 
+	#if DERAND_ENABLE
+	// Only from here this setsockopt is useful.
+	sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+	derand_lock_sock(sk, sc_id | (0 << 29));
+	#else
 	lock_sock(sk);
+	#endif
 
 	switch (optname) {
 	case SO_DEBUG:
@@ -1010,7 +1019,11 @@ set_rcvbuf:
 		ret = -ENOPROTOOPT;
 		break;
 	}
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id | (1 << 29));
+	#else
 	release_sock(sk);
+	#endif
 	return ret;
 }
 EXPORT_SYMBOL(sock_setsockopt);

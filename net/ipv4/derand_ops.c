@@ -36,6 +36,11 @@ static u32 new_close_default(struct sock *sk, long timeout){
 	return 0;
 }
 
+/* default function for new setsockopt */
+static u32 new_setsockopt_default(struct sock *sk, int level, int optname, char __user *optval, unsigned int optlen){
+	return 0;
+}
+
 /* default function for sockcall_lock */
 static void sockcall_lock_default(struct sock *sk, u32 sc_id){
 	return;
@@ -127,6 +132,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.new_recvmsg = new_recvmsg_default,
 	.new_splice_read = new_splice_read_default,
 	.new_close = new_close_default,
+	.new_setsockopt = new_setsockopt_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,
@@ -174,6 +180,7 @@ struct derand_record_ops derand_record_ops = {
 	.new_recvmsg = new_recvmsg_default,
 	.new_splice_read = new_splice_read_default,
 	.new_close = new_close_default,
+	.new_setsockopt = new_setsockopt_default,
 	.sockcall_lock = sockcall_lock_default,
 	.sockcall_before_lock = sockcall_before_lock_default,
 	.incoming_pkt = incoming_pkt_default,

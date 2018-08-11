@@ -1784,7 +1784,6 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	u32 urg_hole = 0;
 	#if DERAND_ENABLE
 	u32 sc_id;
-	sc_id = derand_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 	#endif
 
 	if (unlikely(flags & MSG_ERRQUEUE))
@@ -1795,6 +1794,7 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 		sk_busy_loop(sk, nonblock);
 
 	#if DERAND_ENABLE
+	sc_id = derand_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 	derand_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
@@ -2700,6 +2700,9 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	int val;
 	int err = 0;
+	#if DERAND_ENABLE
+	u32 sc_id;
+	#endif
 
 	/* These are data/string values, all the others are ints */
 	switch (optname) {
@@ -2715,9 +2718,21 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			return -EFAULT;
 		name[val] = 0;
 
+		#if DERAND_ENABLE
+		// Only from here this setsockopt is useful.
+		// This won't conflict with the later derand_record_ops.new_setsockopt, 
+		// because we have `return` just after the release_sock
+		sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+		derand_lock_sock(sk, sc_id | (0 << 29));
+		#else
 		lock_sock(sk);
+		#endif
 		err = tcp_set_congestion_control(sk, name);
+		#if DERAND_ENABLE
+		derand_release_sock(sk, sc_id | (1 << 29));
+		#else
 		release_sock(sk);
+		#endif
 		return err;
 	}
 	default:
@@ -2731,7 +2746,13 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	if (get_user(val, (int __user *)optval))
 		return -EFAULT;
 
+	#if DERAND_ENABLE
+	// Only from here this setsockopt is useful.
+	sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+	derand_lock_sock(sk, sc_id | (2 << 29));
+	#else
 	lock_sock(sk);
+	#endif
 
 	switch (optname) {
 	case TCP_MAXSEG:
@@ -2980,7 +3001,11 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		break;
 	}
 
+	#if DERAND_ENABLE
+	derand_release_sock(sk, sc_id | (3 << 29));
+	#else
 	release_sock(sk);
+	#endif
 	return err;
 }
 
