@@ -2000,10 +2000,48 @@ bool skb_page_frag_refill(unsigned int sz, struct page_frag *pfrag, gfp_t gfp)
 	return false;
 }
 EXPORT_SYMBOL(skb_page_frag_refill);
+#if DERAND_ENABLE
+bool derand_skb_page_frag_refill(const struct sock *sk, unsigned int sz, struct page_frag *pfrag, gfp_t gfp)
+{
+	if (pfrag->page) {
+		if (derand_effect_bool(sk, 1, (atomic_read(&pfrag->page->_count) == 1))) {
+			pfrag->offset = 0;
+			return true;
+		}
+		if (pfrag->offset + sz <= pfrag->size)
+			return true;
+		put_page(pfrag->page);
+	}
+
+	pfrag->offset = 0;
+	if (SKB_FRAG_PAGE_ORDER) {
+		/* Avoid direct reclaim but allow kswapd to wake */
+		pfrag->page = alloc_pages((gfp & ~__GFP_DIRECT_RECLAIM) |
+					  __GFP_COMP | __GFP_NOWARN |
+					  __GFP_NORETRY,
+					  SKB_FRAG_PAGE_ORDER);
+		if (likely(pfrag->page)) {
+			pfrag->size = PAGE_SIZE << SKB_FRAG_PAGE_ORDER;
+			return true;
+		}
+	}
+	pfrag->page = alloc_page(gfp);
+	if (likely(pfrag->page)) {
+		pfrag->size = PAGE_SIZE;
+		return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(derand_skb_page_frag_refill);
+#endif /* DERAND_ENABLE */
 
 bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag)
 {
+	#if DERAND_ENABLE
+	if (likely(derand_skb_page_frag_refill(sk, 32U, pfrag, sk->sk_allocation)))
+	#else
 	if (likely(skb_page_frag_refill(32U, pfrag, sk->sk_allocation)))
+	#endif
 		return true;
 
 	sk_enter_memory_pressure(sk);
