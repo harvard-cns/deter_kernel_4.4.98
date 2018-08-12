@@ -1914,7 +1914,11 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 		derand_general_event(sk, 209, copied);
 		derand_advanced_event(sk, DR_TCP_RECVMSG, 9, 0b0, copied);
 		#endif
+		#if DERAND_ENABLE
+		if (derand_effect_bool(sk, 16, copied >= target && !sk->sk_backlog.tail))
+		#else
 		if (copied >= target && !sk->sk_backlog.tail)
+		#endif
 			break;
 
 		if (copied) {
