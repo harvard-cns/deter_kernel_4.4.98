@@ -2227,8 +2227,17 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
  */
 static inline struct page_frag *sk_page_frag(struct sock *sk)
 {
+	#if DERAND_ENABLE
+	// Using current->task_frag introduces unnecessary trouble for replay.
+	// For instance, the same thread may interleavingly sendmsg to two sockets,
+	// thus for each sendmsg, the state of task_frag is the result of a sendmsg at 
+	// ANOTHER socket. This requires us to record the task_frag state for each 
+	// sendmsg, which is not a big overhead (per-sockcall record). But for brevity,
+	// just use per-socket sk_frag.
+	#else
 	if (gfpflags_allow_blocking(sk->sk_allocation))
 		return &current->task_frag;
+	#endif
 
 	return &sk->sk_frag;
 }
