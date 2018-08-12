@@ -925,7 +925,14 @@ enum derand_func_enum{
 #define derand_advanced_event(sk, func_num, loc, fmt, ...) do{}while(0)
 #endif
 
-#endif
+/* alert */
+extern void (*derand_record_alert)(const struct sock *sk, int loc);
+static inline void derand_alert(const struct sock* sk, int loc){
+	if (derand_record_alert)
+		if (sk->recorder)
+			derand_record_alert(sk, loc);
+}
+#endif /* DERAND_ENABLE */
 
 /* The per-socket spinlock must be held here. */
 static inline __must_check int sk_add_backlog(struct sock *sk, struct sk_buff *skb,
@@ -2234,10 +2241,10 @@ bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag);
 static inline bool sock_writeable(const struct sock *sk)
 {
 	#if DERAND_ENABLE
-	return derand_effect_bool(sk, 1, atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1));
-	#else
-	return atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1);
+	// I believe this function is not used by tcp socket. But if it does, let me know.
+	derand_alert(sk, 0);
 	#endif
+	return atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1);
 }
 
 static inline gfp_t gfp_any(void)

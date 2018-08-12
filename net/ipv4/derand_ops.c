@@ -225,4 +225,7 @@ EXPORT_SYMBOL(derand_replay_effect_bool);
 void (*advanced_event)(const struct sock *sk, u8 func_num, u8 loc, u8 fmt, int n, ...) = NULL;
 EXPORT_SYMBOL(advanced_event);
 
+void (*derand_record_alert)(const struct sock *sk, int loc) = NULL;
+EXPORT_SYMBOL(derand_record_alert);
+
 #endif /* DERAND_ENABLE */
