@@ -140,6 +140,9 @@
 
 #include "net-sysfs.h"
 
+/* DERAND */
+#include <net/derand_ops.h>
+
 /* Instead of increasing this, you should create a hash table. */
 #define MAX_GRO_SKBS 8
 
@@ -3058,6 +3061,11 @@ struct netdev_queue *netdev_pick_tx(struct net_device *dev,
 				    void *accel_priv)
 {
 	int queue_index = 0;
+	#if DERAND_ENABLE
+	// this is to prevent tx packet out of order
+	if (skb->sk && (skb->sk->replayer));
+		return netdev_get_tx_queue(dev, 0);
+	#endif
 
 #ifdef CONFIG_XPS
 	u32 sender_cpu = skb->sender_cpu - 1;
