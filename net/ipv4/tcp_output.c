@@ -1080,7 +1080,10 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	skb_shinfo(skb)->gso_size = tcp_skb_mss(skb);
 
 	/* Our usage of tstamp should remain private */
+	#if DERAND_ENABLE
+	#else
 	skb->tstamp.tv64 = 0;
+	#endif
 
 	#if DERAND_ENABLE
 	derand_advanced_event(sk, DR_TCP_TRANSMIT_SKB, 1, 0b0000, tcb->seq, tcb->end_seq, tcb->ack_seq, tcp_skb_pcount(skb));

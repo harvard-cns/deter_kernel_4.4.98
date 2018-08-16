@@ -132,6 +132,8 @@ struct derand_record_ops{
 	 * log
 	 *****************************************/
 	int (*log)(const struct sock *sk, const char *fmt, ...);
+
+	void (*tx_stamp)(const struct sk_buff *skb);
 };
 
 extern struct derand_record_ops derand_record_ops_default;

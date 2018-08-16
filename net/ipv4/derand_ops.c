@@ -165,6 +165,7 @@ struct derand_record_ops derand_record_ops_default = {
 	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
 	.log = log_default,
+	.tx_stamp = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops_default);
 
@@ -213,6 +214,7 @@ struct derand_record_ops derand_record_ops = {
 	.replay_skb_still_in_host_queue = NULL,
 	.general_event = NULL,
 	.log = log_default,
+	.tx_stamp = NULL,
 };
 EXPORT_SYMBOL(derand_record_ops);
 

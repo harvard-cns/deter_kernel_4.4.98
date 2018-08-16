@@ -54,6 +54,9 @@
 #include <net/pkt_cls.h>
 #include <net/tc_act/tc_gact.h>
 
+/* derand */
+#include <net/derand_ops.h>
+
 #ifdef CONFIG_OF
 #include <linux/of_net.h>
 #endif
@@ -7810,6 +7813,11 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	}
 
 	skb_tx_timestamp(skb);
+	#if DERAND_ENABLE
+	if (skb->sk && skb->sk->recorder && derand_record_ops.tx_stamp){
+		derand_record_ops.tx_stamp(skb);
+	}
+	#endif
 
 #ifdef CONFIG_PCI_IOV
 	/*
