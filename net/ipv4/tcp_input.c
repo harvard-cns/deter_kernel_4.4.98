@@ -3675,6 +3675,9 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 
 	/* We very likely will need to access write queue head. */
 	prefetchw(sk->sk_write_queue.next);
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_ACK, 0, 0b00000, ack_seq, ack, prior_packets, prior_unsacked, flag);
+	#endif
 
 	/* If the ack is older than previous acks
 	 * then we can probably ignore it.
@@ -3691,6 +3694,9 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	/* If the ack includes data we haven't sent yet, discard
 	 * this segment (RFC793 Section 3.9).
 	 */
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_ACK, 1, 0b00, ack, tp->snd_nxt);
+	#endif
 	if (after(ack, tp->snd_nxt))
 		goto invalid_ack;
 
@@ -3747,6 +3753,9 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 
 		tcp_in_ack_event(sk, ack_ev_flags);
 	}
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_ACK, 2, 0b0, flag);
+	#endif
 
 	/* We passed data and got it acked, remove any soft error
 	 * log. Something worked...
@@ -3766,9 +3775,15 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	flag |= tcp_clean_rtx_queue(sk, prior_fackets, prior_snd_una,
 				    &sack_state);
 	acked -= tp->packets_out;
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_ACK, 3, 0b0, flag);
+	#endif
 
 	if (tcp_ack_is_dubious(sk, flag)) {
 		is_dupack = !(flag & (FLAG_SND_UNA_ADVANCED | FLAG_NOT_DUP));
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_ACK, 4, 0b0, is_dupack);
+		#endif
 		tcp_fastretrans_alert(sk, acked, prior_unsacked,
 				      is_dupack, flag);
 	}
@@ -3788,6 +3803,9 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	return 1;
 
 no_queue:
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_ACK, 5, 0b0, flag);
+	#endif
 	/* If data was DSACKed, see if we can undo a cwnd reduction. */
 	if (flag & FLAG_DSACKING_ACK)
 		tcp_fastretrans_alert(sk, acked, prior_unsacked,
