@@ -5486,7 +5486,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 		struct iphdr *iph = ip_hdr(skb);
 		struct tcphdr *tcph = (struct tcphdr *)((u32 *)iph + iph->ihl);
 		derand_general_event(sk, 100, ((u64)ntohl(tcph->seq) << 32) | ntohl(tcph->ack_seq));
-		derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 0, 0b00000, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq, TCP_SKB_CB(skb)->ack_seq, sk->sk_sndbuf, sk->sk_wmem_queued);
+		derand_advanced_event(sk, DR_TCP_RCV_ESTABLISHED, 0, 0b0000000, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq, TCP_SKB_CB(skb)->ack_seq, sk->sk_sndbuf, sk->sk_wmem_queued, tp->snd_cwnd, tp->snd_ssthresh);
 	}
 	#endif
 	if (unlikely(!sk->sk_rx_dst))
