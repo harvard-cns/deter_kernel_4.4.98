@@ -2180,10 +2180,16 @@ static bool tcp_time_to_recover(struct sock *sk, int flag)
 	struct tcp_sock *tp = tcp_sk(sk);
 	__u32 packets_out;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TIME_TO_RECOVER, 0, 0b00, flag, tp->lost_out);
+	#endif
 	/* Trick#1: The loss is proven. */
 	if (tp->lost_out)
 		return true;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TIME_TO_RECOVER, 1, 0b00, tcp_dupack_heuristics(tp), tp->reordering);
+	#endif
 	/* Not-A-Trick#2 : Classic rule... */
 	if (tcp_dupack_heuristics(tp) > tp->reordering)
 		return true;
@@ -2191,6 +2197,9 @@ static bool tcp_time_to_recover(struct sock *sk, int flag)
 	/* Trick#4: It is still not OK... But will it be useful to delay
 	 * recovery more?
 	 */
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TIME_TO_RECOVER, 2, 0b000, tp->packets_out, tp->sacked_out, tcp_may_send_now(sk));
+	#endif
 	packets_out = tp->packets_out;
 	if (packets_out <= tp->reordering &&
 	    tp->sacked_out >= max_t(__u32, packets_out/2, sysctl_tcp_reordering) &&
@@ -2216,6 +2225,9 @@ static bool tcp_time_to_recover(struct sock *sk, int flag)
 	 * Mitigation A.3 in the RFC and delay the retransmission for a short
 	 * interval if appropriate.
 	 */
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_TIME_TO_RECOVER, 3, 0b0000, tp->do_early_retrans, tp->retrans_out, tp->sacked_out, tp->packets_out);
+	#endif
 	if (tp->do_early_retrans && !tp->retrans_out && tp->sacked_out &&
 	    (tp->packets_out >= (tp->sacked_out + 1) && tp->packets_out < 4) &&
 	    !tcp_may_send_now(sk))
@@ -2850,6 +2862,9 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 	bool do_lost = is_dupack || ((flag & FLAG_DATA_SACKED) &&
 				    (tcp_fackets_out(tp) > tp->reordering));
 	int fast_rexmit = 0;
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 0, 0b0000, acked, prior_unsacked, is_dupack, flag);
+	#endif
 
 	if (WARN_ON(!tp->packets_out && tp->sacked_out))
 		tp->sacked_out = 0;
@@ -2868,12 +2883,18 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 	/* C. Check consistency of the current state. */
 	tcp_verify_left_out(tp);
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 1, 0b0, icsk->icsk_ca_state);
+	#endif
 	/* D. Check state exit conditions. State can be terminated
 	 *    when high_seq is ACKed. */
 	if (icsk->icsk_ca_state == TCP_CA_Open) {
 		WARN_ON(tp->retrans_out != 0);
 		tp->retrans_stamp = 0;
 	} else if (!before(tp->snd_una, tp->high_seq)) {
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 2, 0b00, tp->snd_una, tp->high_seq);
+		#endif
 		switch (icsk->icsk_ca_state) {
 		case TCP_CA_CWR:
 			/* CWR is to be held something *above* high_seq
@@ -2899,31 +2920,52 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 	    tcp_rack_mark_lost(sk))
 		flag |= FLAG_LOST_RETRANS;
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 3, 0b00, icsk->icsk_ca_state, flag);
+	#endif
 	/* E. Process state. */
 	switch (icsk->icsk_ca_state) {
 	case TCP_CA_Recovery:
 		if (!(flag & FLAG_SND_UNA_ADVANCED)) {
 			if (tcp_is_reno(tp) && is_dupack)
 				tcp_add_reno_sack(sk);
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 4, 0b00, is_dupack, tp->sacked_out);
+			#endif
 		} else {
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 5, 0b0, 0);
+			#endif
 			if (tcp_try_undo_partial(sk, acked, prior_unsacked, flag))
 				return;
 			/* Partial ACK arrived. Force fast retransmit. */
 			do_lost = tcp_is_reno(tp) ||
 				  tcp_fackets_out(tp) > tp->reordering;
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 6, 0b0, do_lost);
+			#endif
 		}
 		if (tcp_try_undo_dsack(sk)) {
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 7, 0b0, 0);
+			#endif
 			tcp_try_keep_open(sk);
 			return;
 		}
 		break;
 	case TCP_CA_Loss:
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 8, 0b0, 0);
+		#endif
 		tcp_process_loss(sk, flag, is_dupack);
 		if (icsk->icsk_ca_state != TCP_CA_Open &&
 		    !(flag & FLAG_LOST_RETRANS))
 			return;
 		/* Change state if cwnd is undone or retransmits are lost */
 	default:
+		#if DERAND_ENABLE
+		derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 9, 0b0, 0);
+		#endif
 		if (tcp_is_reno(tp)) {
 			if (flag & FLAG_SND_UNA_ADVANCED)
 				tcp_reset_reno_sack(tp);
@@ -2936,6 +2978,9 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 
 		if (!tcp_time_to_recover(sk, flag)) {
 			tcp_try_to_open(sk, flag, prior_unsacked);
+			#if DERAND_ENABLE
+			derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 10, 0b0, 0);
+			#endif
 			return;
 		}
 
@@ -2955,6 +3000,9 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 		fast_rexmit = 1;
 	}
 
+	#if DERAND_ENABLE
+	derand_advanced_event(sk, DR_TCP_FASTRETRANS_ALERT, 11, 0b0, do_lost);
+	#endif
 	if (do_lost)
 		tcp_update_scoreboard(sk, fast_rexmit);
 	tcp_cwnd_reduction(sk, prior_unsacked, fast_rexmit, flag);
