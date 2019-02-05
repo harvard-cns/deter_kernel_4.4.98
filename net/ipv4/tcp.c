@@ -2036,11 +2036,11 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
 			#if DERAND_ENABLE
-			release_sock(sk);
-			lock_sock(sk);
-			#else
 			derand_release_sock(sk, sc_id | (1 << 29));
 			derand_lock_sock(sk, sc_id | (2 << 29));
+			#else
+			release_sock(sk);
+			lock_sock(sk);
 			#endif /* DERAND_ENABLE */
 		} else {
 			#if DERAND_ENABLE
