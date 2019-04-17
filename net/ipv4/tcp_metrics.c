@@ -19,8 +19,8 @@
 #include <net/dst.h>
 #include <net/tcp.h>
 #include <net/genetlink.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 int sysctl_tcp_nometrics_save __read_mostly;
 
@@ -572,8 +572,8 @@ reset:
 		tp->snd_cwnd = 1;
 	else
 		tp->snd_cwnd = tcp_init_cwnd(tp, dst);
-	#if DERAND_ENABLE
-	tp->snd_cwnd_stamp = derand_tcp_time_stamp(sk, 32); // should be irrelavent: this is before we create recorder
+	#if DETER_ENABLE
+	tp->snd_cwnd_stamp = deter_tcp_time_stamp(sk, 32); // should be irrelavent: this is before we create recorder
 	#else
 	tp->snd_cwnd_stamp = tcp_time_stamp;
 	#endif

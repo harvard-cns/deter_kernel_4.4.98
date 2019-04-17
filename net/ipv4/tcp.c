@@ -282,8 +282,8 @@
 #include <asm/unaligned.h>
 #include <net/busy_poll.h>
 
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
@@ -657,8 +657,8 @@ static bool tcp_should_autocork(struct sock *sk, struct sk_buff *skb,
 	return skb->len < size_goal &&
 	       sysctl_tcp_autocorking &&
 	       skb != tcp_write_queue_head(sk) &&
-		   #if DERAND_ENABLE
-	       derand_effect_bool(sk, 6, atomic_read(&sk->sk_wmem_alloc) > skb->truesize);
+		   #if DETER_ENABLE
+	       deter_effect_bool(sk, 6, atomic_read(&sk->sk_wmem_alloc) > skb->truesize);
 		   #else
 	       atomic_read(&sk->sk_wmem_alloc) > skb->truesize;
 		   #endif
@@ -670,8 +670,8 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_PUSH, 0, 0b00, flags, mss_now, nonagle, size_goal);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_PUSH, 0, 0b00, flags, mss_now, nonagle, size_goal);
 	#endif
 	if (!tcp_send_head(sk))
 		return;
@@ -682,8 +682,8 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 
 	tcp_mark_urg(tp, flags);
 
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_PUSH, 1, 0b00, skb->len, TCP_SKB_CB(skb)->seq);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_PUSH, 1, 0b00, skb->len, TCP_SKB_CB(skb)->seq);
 	#endif
 	if (tcp_should_autocork(sk, skb, size_goal)) {
 
@@ -695,8 +695,8 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 		/* It is possible TX completion already happened
 		 * before we set TSQ_THROTTLED.
 		 */
-		#if DERAND_ENABLE
-		if (derand_effect_bool(sk, 7, atomic_read(&sk->sk_wmem_alloc) > skb->truesize))
+		#if DETER_ENABLE
+		if (deter_effect_bool(sk, 7, atomic_read(&sk->sk_wmem_alloc) > skb->truesize))
 		#else
 		if (atomic_read(&sk->sk_wmem_alloc) > skb->truesize)
 		#endif
@@ -759,8 +759,8 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 	long timeo;
 	ssize_t spliced;
 	int ret;
-	#if DERAND_ENABLE
-	derand_record_ops.new_splice_read(sk, len, flags);
+	#if DETER_ENABLE
+	deter_record_ops.new_splice_read(sk, len, flags);
 	#endif
 
 	sock_rps_record_flow(sk);
@@ -846,12 +846,12 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 
 	/* The TCP header must be at least 32-bit aligned.  */
 	size = ALIGN(size, 4);
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 0, 0b000, size, gfp, (int)force_schedule);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 0, 0b000, size, gfp, (int)force_schedule);
 	#endif
 
-	#if DERAND_ENABLE
-	if (unlikely(derand_tcp_under_memory_pressure(sk)))
+	#if DETER_ENABLE
+	if (unlikely(deter_tcp_under_memory_pressure(sk)))
 	#else
 	if (unlikely(tcp_under_memory_pressure(sk)))
 	#endif
@@ -874,13 +874,13 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 			 * available to the caller, no more, no less.
 			 */
 			skb->reserved_tailroom = skb->end - skb->tail - size;
-			#if DERAND_ENABLE
-			derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 1, 0b0, skb->reserved_tailroom);
+			#if DETER_ENABLE
+			deter_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 1, 0b0, skb->reserved_tailroom);
 			#endif
 			return skb;
 		}
-		#if DERAND_ENABLE
-		derand_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 2, 0b0, skb->truesize);
+		#if DETER_ENABLE
+		deter_advanced_event(sk, DR_SK_STREAM_ALLOC_SKB, 2, 0b0, skb->truesize);
 		#endif
 		__kfree_skb(skb);
 	} else {
@@ -1057,9 +1057,9 @@ int tcp_sendpage(struct sock *sk, struct page *page, int offset,
 {
 	ssize_t res;
 
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	return sock_no_sendpage(sk->sk_socket, page, offset, size, flags);
-	//derand_record_ops.new_sendpage(sk, offset, size, flags);
+	//deter_record_ops.new_sendpage(sk, offset, size, flags);
 	#endif
 	if (!(sk->sk_route_caps & NETIF_F_SG) ||
 	    !(sk->sk_route_caps & NETIF_F_ALL_CSUM))
@@ -1142,24 +1142,24 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	bool sg;
 	long timeo;
 
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	u32 sc_id;
-	sc_id = derand_record_ops.new_sendmsg(sk, msg, size);
-	derand_lock_sock(sk, sc_id | (0 << 29));
+	sc_id = deter_record_ops.new_sendmsg(sk, msg, size);
+	deter_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif /* DETER_ENABLE */
 
 	flags = msg->msg_flags;
-	#if DERAND_ENABLE
-	derand_general_event(sk, 0, flags);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 0, 0b00, flags, size);
+	#if DETER_ENABLE
+	deter_general_event(sk, 0, flags);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 0, 0b00, flags, size);
 	#endif
 	if (flags & MSG_FASTOPEN) {
 		err = tcp_sendmsg_fastopen(sk, msg, &copied_syn, size);
-		#if DERAND_ENABLE
-		derand_general_event(sk, 1, err);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 1, 0b00, copied_syn, err);
+		#if DETER_ENABLE
+		deter_general_event(sk, 1, err);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 1, 0b00, copied_syn, err);
 		#endif
 		if (err == -EINPROGRESS && copied_syn > 0)
 			goto out;
@@ -1168,8 +1168,8 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	}
 
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 2, 0b0, timeo);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 2, 0b0, timeo);
 	#endif
 
 	/* Wait for a connection to finish. One exception is TCP Fast Open
@@ -1179,23 +1179,23 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	if (((1 << sk->sk_state) & ~(TCPF_ESTABLISHED | TCPF_CLOSE_WAIT)) &&
 	    !tcp_passive_fastopen(sk)) {
 		err = sk_stream_wait_connect(sk, &timeo);
-		#if DERAND_ENABLE
-		derand_general_event(sk, 2, err);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 3, 0b00, err, sk->sk_state);
+		#if DETER_ENABLE
+		deter_general_event(sk, 2, err);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 3, 0b00, err, sk->sk_state);
 		#endif
 		if (err != 0)
 			goto do_error;
 	}
 
 	if (unlikely(tp->repair)) {
-		#if DERAND_ENABLE
-		derand_general_event(sk, 3, err);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 4, 0b00, tp->repair, tp->repair_queue);
+		#if DETER_ENABLE
+		deter_general_event(sk, 3, err);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 4, 0b00, tp->repair, tp->repair_queue);
 		#endif
 		if (tp->repair_queue == TCP_RECV_QUEUE) {
 			copied = tcp_send_rcvq(sk, msg, size);
-			#if DERAND_ENABLE
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 5, 0b0, copied);
+			#if DETER_ENABLE
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 5, 0b0, copied);
 			#endif
 			goto out_nopush;
 		}
@@ -1211,9 +1211,9 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
 
 	mss_now = tcp_send_mss(sk, &size_goal, flags);
-	#if DERAND_ENABLE
-	derand_general_event(sk, 4, (((u64)mss_now) << 32) | size_goal);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 6, 0b0000, mss_now, size_goal, sk->sk_err, sk->sk_shutdown);
+	#if DETER_ENABLE
+	deter_general_event(sk, 4, (((u64)mss_now) << 32) | size_goal);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 6, 0b0000, mss_now, size_goal, sk->sk_err, sk->sk_shutdown);
 	#endif
 
 	/* Ok commence sending. */
@@ -1224,9 +1224,9 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		goto out_err;
 
 	sg = !!(sk->sk_route_caps & NETIF_F_SG);
-	#if DERAND_ENABLE
-	derand_general_event(sk, 5, sg);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 7, 0b0, (int)sg);
+	#if DETER_ENABLE
+	deter_general_event(sk, 5, sg);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 7, 0b0, (int)sg);
 	#endif
 
 	while (msg_data_left(msg)) {
@@ -1234,17 +1234,17 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		int max = size_goal;
 
 		skb = tcp_write_queue_tail(sk);
-		#if DERAND_ENABLE
-		derand_general_event(sk, 6, ((u64)msg_data_left(msg) << 32) | size_goal);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 8, 0b00, (u32)msg_data_left(msg), size_goal);
+		#if DETER_ENABLE
+		deter_general_event(sk, 6, ((u64)msg_data_left(msg) << 32) | size_goal);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 8, 0b00, (u32)msg_data_left(msg), size_goal);
 		#endif
 		if (tcp_send_head(sk)) {
 			if (skb->ip_summed == CHECKSUM_NONE)
 				max = mss_now;
 			copy = max - skb->len;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 7, ((u64)max<<32) | skb->len);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 9, 0b000, skb->ip_summed, max, skb->len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 7, ((u64)max<<32) | skb->len);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 9, 0b000, skb->ip_summed, max, skb->len);
 			#endif
 		}
 
@@ -1253,16 +1253,16 @@ new_segment:
 			/* Allocate new segment. If the interface is SG,
 			 * allocate skb fitting to single page.
 			 */
-			#if DERAND_ENABLE
-			derand_general_event(sk, 8, copy);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 10, 0b000, copy, sk->sk_wmem_queued, sk->sk_sndbuf);
+			#if DETER_ENABLE
+			deter_general_event(sk, 8, copy);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 10, 0b000, copy, sk->sk_wmem_queued, sk->sk_sndbuf);
 			#endif
 			if (!sk_stream_memory_free(sk))
 				goto wait_for_sndbuf;
 
-			#if DERAND_ENABLE
-			derand_general_event(sk, 9, sk->sk_allocation);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 11, 0b0, sk->sk_allocation);
+			#if DETER_ENABLE
+			deter_general_event(sk, 9, sk->sk_allocation);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 11, 0b0, sk->sk_allocation);
 			#endif
 			skb = sk_stream_alloc_skb(sk,
 						  select_size(sk, sg),
@@ -1280,9 +1280,9 @@ new_segment:
 			skb_entail(sk, skb);
 			copy = size_goal;
 			max = size_goal;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 10, size_goal);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 12, 0b0, size_goal);
+			#if DETER_ENABLE
+			deter_general_event(sk, 10, size_goal);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 12, 0b0, size_goal);
 			#endif
 
 			/* All packets are restored as if they have
@@ -1293,9 +1293,9 @@ new_segment:
 				TCP_SKB_CB(skb)->sacked |= TCPCB_REPAIRED;
 		}
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 11, ((u64)copy << 32) | msg_data_left(msg));
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 13, 0b00, copy, msg_data_left(msg));
+		#if DETER_ENABLE
+		deter_general_event(sk, 11, ((u64)copy << 32) | msg_data_left(msg));
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 13, 0b00, copy, msg_data_left(msg));
 		#endif
 		/* Try to append data to the end of skb. */
 		if (copy > msg_data_left(msg))
@@ -1305,9 +1305,9 @@ new_segment:
 		if (skb_availroom(skb) > 0) {
 			/* We have some space in skb head. Superb! */
 			copy = min_t(int, copy, skb_availroom(skb));
-			#if DERAND_ENABLE
-			derand_general_event(sk, 12, skb_availroom(skb));
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 14, 0b00, copy, skb_availroom(skb));
+			#if DETER_ENABLE
+			deter_general_event(sk, 12, skb_availroom(skb));
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 14, 0b00, copy, skb_availroom(skb));
 			#endif
 			err = skb_add_data_nocache(sk, skb, &msg->msg_iter, copy);
 			if (err)
@@ -1317,23 +1317,23 @@ new_segment:
 			int i = skb_shinfo(skb)->nr_frags;
 			struct page_frag *pfrag = sk_page_frag(sk);
 
-			#if DERAND_ENABLE
-			derand_general_event(sk, 13, i);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 15, 0b0, i);
+			#if DETER_ENABLE
+			deter_general_event(sk, 13, i);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 15, 0b0, i);
 			#endif
 			if (!sk_page_frag_refill(sk, pfrag))
 				goto wait_for_memory;
 
 			if (!skb_can_coalesce(skb, i, pfrag->page,
 					      pfrag->offset)) {
-				#if DERAND_ENABLE
-				derand_general_event(sk, 14, pfrag->offset);
-				derand_advanced_event(sk, DR_TCP_SENDMSG, 16, 0b00, pfrag->size, pfrag->offset);
+				#if DETER_ENABLE
+				deter_general_event(sk, 14, pfrag->offset);
+				deter_advanced_event(sk, DR_TCP_SENDMSG, 16, 0b00, pfrag->size, pfrag->offset);
 				#endif
 				if (i >= sysctl_max_skb_frags || !sg) {
-					#if DERAND_ENABLE
-					derand_general_event(sk, 15, 0);
-					derand_advanced_event(sk, DR_TCP_SENDMSG, 17, 0b00, sysctl_max_skb_frags, sg);
+					#if DETER_ENABLE
+					deter_general_event(sk, 15, 0);
+					deter_advanced_event(sk, DR_TCP_SENDMSG, 17, 0b00, sysctl_max_skb_frags, sg);
 					#endif
 					tcp_mark_push(tp, skb);
 					goto new_segment;
@@ -1341,9 +1341,9 @@ new_segment:
 				merge = false;
 			}
 
-			#if DERAND_ENABLE
-			derand_general_event(sk, 16, ((u64)copy<<32) | (pfrag->size - pfrag->offset));
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 18, 0b000, copy, pfrag->size, pfrag->offset);
+			#if DETER_ENABLE
+			deter_general_event(sk, 16, ((u64)copy<<32) | (pfrag->size - pfrag->offset));
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 18, 0b000, copy, pfrag->size, pfrag->offset);
 			#endif
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
 
@@ -1354,9 +1354,9 @@ new_segment:
 						       pfrag->page,
 						       pfrag->offset,
 						       copy);
-			#if DERAND_ENABLE
-			derand_general_event(sk, 17, err);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 19, 0b0, err);
+			#if DETER_ENABLE
+			deter_general_event(sk, 17, err);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 19, 0b0, err);
 			#endif
 			if (err)
 				goto do_error;
@@ -1368,15 +1368,15 @@ new_segment:
 				skb_fill_page_desc(skb, i, pfrag->page,
 						   pfrag->offset, copy);
 				get_page(pfrag->page);
-				#if DERAND_ENABLE
-				derand_general_event(sk, 18, 0);
+				#if DETER_ENABLE
+				deter_general_event(sk, 18, 0);
 				#endif
 			}
 			pfrag->offset += copy;
 		}
 
-		#if DERAND_ENABLE
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 20, 0b0, copied);
+		#if DETER_ENABLE
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 20, 0b0, copied);
 		#endif
 		if (!copied)
 			TCP_SKB_CB(skb)->tcp_flags &= ~TCPHDR_PSH;
@@ -1387,89 +1387,89 @@ new_segment:
 
 		copied += copy;
 		if (!msg_data_left(msg)) {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 19, 0);
-			derand_advanced_event(sk, DR_TCP_SENDMSG, 21, 0b0, sk->sk_tsflags);
+			#if DETER_ENABLE
+			deter_general_event(sk, 19, 0);
+			deter_advanced_event(sk, DR_TCP_SENDMSG, 21, 0b0, sk->sk_tsflags);
 			#endif
 			tcp_tx_timestamp(sk, skb);
 			goto out;
 		}
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 20, copied);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 22, 0b0000, skb->len, max, copied, TCP_SKB_CB(skb)->end_seq);
+		#if DETER_ENABLE
+		deter_general_event(sk, 20, copied);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 22, 0b0000, skb->len, max, copied, TCP_SKB_CB(skb)->end_seq);
 		#endif
 		if (skb->len < max || (flags & MSG_OOB) || unlikely(tp->repair))
 			continue;
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 21, skb->len);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 23, 0b000, tp->write_seq, tp->pushed_seq, tp->max_window);
+		#if DETER_ENABLE
+		deter_general_event(sk, 21, skb->len);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 23, 0b000, tp->write_seq, tp->pushed_seq, tp->max_window);
 		#endif
 		if (forced_push(tp)) {
 			tcp_mark_push(tp, skb);
 			__tcp_push_pending_frames(sk, mss_now, TCP_NAGLE_PUSH);
-			#if DERAND_ENABLE
-			derand_general_event(sk, 22, skb->len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 22, skb->len);
 			#endif
 		} else if (skb == tcp_send_head(sk)){
 			tcp_push_one(sk, mss_now);
-			#if DERAND_ENABLE
-			derand_general_event(sk, 23, skb->len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 23, skb->len);
 			#endif
 		}
 		continue;
 
 wait_for_sndbuf:
-		#if DERAND_ENABLE
-		derand_general_event(sk, 24, 0);
+		#if DETER_ENABLE
+		deter_general_event(sk, 24, 0);
 		#endif
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 wait_for_memory:
-		#if DERAND_ENABLE
-		derand_general_event(sk, 25, copied);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 24, 0b0, copied);
+		#if DETER_ENABLE
+		deter_general_event(sk, 25, copied);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 24, 0b0, copied);
 		#endif
 		if (copied)
 			tcp_push(sk, flags & ~MSG_MORE, mss_now,
 				 TCP_NAGLE_PUSH, size_goal);
 
-		#if DERAND_ENABLE
-		err = derand_sk_stream_wait_memory(sk, &timeo, sc_id | (6 << 29));
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 25, 0b0, timeo);
+		#if DETER_ENABLE
+		err = deter_sk_stream_wait_memory(sk, &timeo, sc_id | (6 << 29));
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 25, 0b0, timeo);
 		#else
 		err = sk_stream_wait_memory(sk, &timeo);
-		#endif /* DERAND_ENABLE */
+		#endif /* DETER_ENABLE */
 		if (err != 0)
 			goto do_error;
 
 		mss_now = tcp_send_mss(sk, &size_goal, flags);
-		#if DERAND_ENABLE
-		derand_general_event(sk, 26, mss_now);
-		derand_advanced_event(sk, DR_TCP_SENDMSG, 26, 0b00, mss_now, size_goal);
+		#if DETER_ENABLE
+		deter_general_event(sk, 26, mss_now);
+		deter_advanced_event(sk, DR_TCP_SENDMSG, 26, 0b00, mss_now, size_goal);
 		#endif
 	}
 
 out:
-	#if DERAND_ENABLE
-	derand_general_event(sk, 27, copied);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 27, 0b0, copied);
+	#if DETER_ENABLE
+	deter_general_event(sk, 27, copied);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 27, 0b0, copied);
 	#endif
 	if (copied)
 		tcp_push(sk, flags, mss_now, tp->nonagle, size_goal);
 out_nopush:
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 28, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
-	derand_release_sock(sk, sc_id | (1 << 29));
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 28, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	deter_release_sock(sk, sc_id | (1 << 29));
 	#else
 	release_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif /* DETER_ENABLE */
 	return copied + copied_syn;
 
 do_fault:
-	#if DERAND_ENABLE
-	derand_general_event(sk, 28, skb->len);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 29, 0b0, skb->len);
+	#if DETER_ENABLE
+	deter_general_event(sk, 28, skb->len);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 29, 0b0, skb->len);
 	#endif
 	if (!skb->len) {
 		tcp_unlink_write_queue(skb, sk);
@@ -1481,27 +1481,27 @@ do_fault:
 	}
 
 do_error:
-	#if DERAND_ENABLE
-	derand_general_event(sk, 29, (((u64)copied_syn) << 32) | copied);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 30, 0b00, copied_syn, copied);
+	#if DETER_ENABLE
+	deter_general_event(sk, 29, (((u64)copied_syn) << 32) | copied);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 30, 0b00, copied_syn, copied);
 	#endif
 	if (copied + copied_syn)
 		goto out;
 out_err:
-	#if DERAND_ENABLE
-	derand_general_event(sk, 30, err);
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 31, 0b0, err);
+	#if DETER_ENABLE
+	deter_general_event(sk, 30, err);
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 31, 0b0, err);
 	#endif
 	err = sk_stream_error(sk, flags, err);
 	/* make sure we wake any epoll edge trigger waiter */
 	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
 		sk->sk_write_space(sk);
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_SENDMSG, 32, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
-	derand_release_sock(sk, sc_id | (2 << 29));
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_SENDMSG, 32, 0x00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	deter_release_sock(sk, sc_id | (2 << 29));
 	#else
 	release_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif /* DETER_ENABLE */
 	return err;
 }
 EXPORT_SYMBOL(tcp_sendmsg);
@@ -1782,7 +1782,7 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	struct task_struct *user_recv = NULL;
 	struct sk_buff *skb, *last;
 	u32 urg_hole = 0;
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	u32 sc_id;
 	#endif
 
@@ -1793,9 +1793,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	    (sk->sk_state == TCP_ESTABLISHED))
 		sk_busy_loop(sk, nonblock);
 
-	#if DERAND_ENABLE
-	sc_id = derand_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
-	derand_lock_sock(sk, sc_id | (0 << 29));
+	#if DETER_ENABLE
+	sc_id = deter_record_ops.new_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+	deter_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
 	#endif
@@ -1805,9 +1805,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 		goto out;
 
 	timeo = sock_rcvtimeo(sk, nonblock);
-	#if DERAND_ENABLE
-	derand_general_event(sk, 200, timeo);
-	derand_advanced_event(sk, DR_TCP_RECVMSG, 0, 0b0001, (int)len, nonblock, flags, timeo);
+	#if DETER_ENABLE
+	deter_general_event(sk, 200, timeo);
+	deter_advanced_event(sk, DR_TCP_RECVMSG, 0, 0b0001, (int)len, nonblock, flags, timeo);
 	#endif
 
 	/* Urgent data needs to be handled specially. */
@@ -1837,24 +1837,24 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 201, target);
-	derand_advanced_event(sk, DR_TCP_RECVMSG, 1, 0b00, target, tp->copied_seq);
+	#if DETER_ENABLE
+	deter_general_event(sk, 201, target);
+	deter_advanced_event(sk, DR_TCP_RECVMSG, 1, 0b00, target, tp->copied_seq);
 	#endif
 	do {
 		u32 offset;
 
 		/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
 		if (tp->urg_data && tp->urg_seq == *seq) {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 202, ((u64)tp->urg_data << 32) | tp->urg_seq);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 2, 0b00, tp->urg_data, tp->urg_seq);
+			#if DETER_ENABLE
+			deter_general_event(sk, 202, ((u64)tp->urg_data << 32) | tp->urg_seq);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 2, 0b00, tp->urg_data, tp->urg_seq);
 			#endif
 			if (copied)
 				break;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 203, copied);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 3, 0b0, copied);
+			#if DETER_ENABLE
+			deter_general_event(sk, 203, copied);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 3, 0b0, copied);
 			#endif
 			if (signal_pending(current)) {
 				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
@@ -1864,16 +1864,16 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		/* Next get a buffer. */
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 204, *seq);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 4, 0b0, *seq);
+		#if DETER_ENABLE
+		deter_general_event(sk, 204, *seq);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 4, 0b0, *seq);
 		#endif
 		last = skb_peek_tail(&sk->sk_receive_queue);
 		skb_queue_walk(&sk->sk_receive_queue, skb) {
 			last = skb;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 205, ((u64)*seq << 32) | TCP_SKB_CB(skb)->seq);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 5, 0b00, *seq, TCP_SKB_CB(skb)->seq);
+			#if DETER_ENABLE
+			deter_general_event(sk, 205, ((u64)*seq << 32) | TCP_SKB_CB(skb)->seq);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 5, 0b00, *seq, TCP_SKB_CB(skb)->seq);
 			#endif
 			/* Now that we have two receive queues this
 			 * shouldn't happen.
@@ -1887,21 +1887,21 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			offset = *seq - TCP_SKB_CB(skb)->seq;
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
 				offset--;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 206, offset);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 6, 0b0, offset);
+			#if DETER_ENABLE
+			deter_general_event(sk, 206, offset);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 6, 0b0, offset);
 			#endif
 			if (offset < skb->len)
 				goto found_ok_skb;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 207, skb->len);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 7, 0b0, skb->len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 207, skb->len);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 7, 0b0, skb->len);
 			#endif
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 				goto found_fin_ok;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 208, TCP_SKB_CB(skb)->tcp_flags);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 8, 0b0, TCP_SKB_CB(skb)->tcp_flags);
+			#if DETER_ENABLE
+			deter_general_event(sk, 208, TCP_SKB_CB(skb)->tcp_flags);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 8, 0b0, TCP_SKB_CB(skb)->tcp_flags);
 			#endif
 			WARN(!(flags & MSG_PEEK),
 			     "recvmsg bug 2: copied %X seq %X rcvnxt %X fl %X\n",
@@ -1910,21 +1910,21 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		/* Well, if we have backlog, try to process it now yet. */
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 209, copied);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 9, 0b0, copied);
+		#if DETER_ENABLE
+		deter_general_event(sk, 209, copied);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 9, 0b0, copied);
 		#endif
-		#if DERAND_ENABLE
-		if (derand_effect_bool(sk, 16, copied >= target && !sk->sk_backlog.tail))
+		#if DETER_ENABLE
+		if (deter_effect_bool(sk, 16, copied >= target && !sk->sk_backlog.tail))
 		#else
 		if (copied >= target && !sk->sk_backlog.tail)
 		#endif
 			break;
 
 		if (copied) {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 210, copied);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 10, 0b0, copied);
+			#if DETER_ENABLE
+			deter_general_event(sk, 210, copied);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 10, 0b0, copied);
 			#endif
 			if (sk->sk_err ||
 			    sk->sk_state == TCP_CLOSE ||
@@ -1933,9 +1933,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			    signal_pending(current))
 				break;
 		} else {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 211, copied);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 11, 0b0, copied);
+			#if DETER_ENABLE
+			deter_general_event(sk, 211, copied);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 11, 0b0, copied);
 			#endif
 			if (sock_flag(sk, SOCK_DONE))
 				break;
@@ -1969,23 +1969,23 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 				break;
 			}
 		}
-		#if DERAND_ENABLE
-		derand_general_event(sk, 212, copied);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 12, 0b0, copied);
+		#if DETER_ENABLE
+		deter_general_event(sk, 212, copied);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 12, 0b0, copied);
 		#endif
 
 		tcp_cleanup_rbuf(sk, copied);
 
 		if (!sysctl_tcp_low_latency && tp->ucopy.task == user_recv) {
-			#if DERAND_ENABLE
-			derand_general_event(sk, 213, len);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 13, 0b0, len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 213, len);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 13, 0b0, len);
 			#endif
 			/* Install new reader */
 			if (!user_recv && !(flags & (MSG_TRUNC | MSG_PEEK))) {
-				#if DERAND_ENABLE
-				derand_general_event(sk, 214, 0);
-				derand_advanced_event(sk, DR_TCP_RECVMSG, 14, 0b0, flags);
+				#if DETER_ENABLE
+				deter_general_event(sk, 214, 0);
+				deter_advanced_event(sk, DR_TCP_RECVMSG, 14, 0b0, flags);
 				#endif
 				user_recv = current;
 				tp->ucopy.task = user_recv;
@@ -2028,26 +2028,26 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 			/* __ Set realtime policy in scheduler __ */
 		}
-		#if DERAND_ENABLE
-		derand_general_event(sk, 215, copied);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 15, 0b0, copied);
+		#if DETER_ENABLE
+		deter_general_event(sk, 215, copied);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 15, 0b0, copied);
 		#endif
 
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
-			#if DERAND_ENABLE
-			derand_release_sock(sk, sc_id | (1 << 29));
-			derand_lock_sock(sk, sc_id | (2 << 29));
+			#if DETER_ENABLE
+			deter_release_sock(sk, sc_id | (1 << 29));
+			deter_lock_sock(sk, sc_id | (2 << 29));
 			#else
 			release_sock(sk);
 			lock_sock(sk);
-			#endif /* DERAND_ENABLE */
+			#endif /* DETER_ENABLE */
 		} else {
-			#if DERAND_ENABLE
-			derand_sk_wait_data(sk, &timeo, last, sc_id | (6 << 29));
+			#if DETER_ENABLE
+			deter_sk_wait_data(sk, &timeo, last, sc_id | (6 << 29));
 			#else
 			sk_wait_data(sk, &timeo, last);
-			#endif /* DERAND_ENABLE */
+			#endif /* DETER_ENABLE */
 		}
 
 		if (user_recv) {
@@ -2056,9 +2056,9 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			/* __ Restore normal policy in scheduler __ */
 
 			chunk = len - tp->ucopy.len;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 216, ((u64)len << 32) | tp->ucopy.len);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 16, 0b00, len, tp->ucopy.len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 216, ((u64)len << 32) | tp->ucopy.len);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 16, 0b00, len, tp->ucopy.len);
 			#endif
 			if (chunk != 0) {
 				NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMBACKLOG, chunk);
@@ -2069,17 +2069,17 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			if (tp->rcv_nxt == tp->copied_seq &&
 			    !skb_queue_empty(&tp->ucopy.prequeue)) {
 do_prequeue:
-				#if DERAND_ENABLE
-				derand_general_event(sk, 217, tp->rcv_nxt);
-				derand_advanced_event(sk, DR_TCP_RECVMSG, 17, 0b0, tp->rcv_nxt);
+				#if DETER_ENABLE
+				deter_general_event(sk, 217, tp->rcv_nxt);
+				deter_advanced_event(sk, DR_TCP_RECVMSG, 17, 0b0, tp->rcv_nxt);
 				#endif
 				tcp_prequeue_process(sk);
 
 				chunk = len - tp->ucopy.len;
 				if (chunk != 0) {
-					#if DERAND_ENABLE
-					derand_general_event(sk, 218, ((u64)len << 32) | tp->ucopy.len);
-					derand_advanced_event(sk, DR_TCP_RECVMSG, 18, 0b00, len, tp->ucopy.len);
+					#if DETER_ENABLE
+					deter_general_event(sk, 218, ((u64)len << 32) | tp->ucopy.len);
+					deter_advanced_event(sk, DR_TCP_RECVMSG, 18, 0b00, len, tp->ucopy.len);
 					#endif
 					NET_ADD_STATS_USER(sock_net(sk), LINUX_MIB_TCPDIRECTCOPYFROMPREQUEUE, chunk);
 					len -= chunk;
@@ -2097,9 +2097,9 @@ do_prequeue:
 		continue;
 
 	found_ok_skb:
-		#if DERAND_ENABLE
-		derand_general_event(sk, 219, skb->len);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 19, 0b000, skb->len, offset, (u32)len);
+		#if DETER_ENABLE
+		deter_general_event(sk, 219, skb->len);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 19, 0b000, skb->len, offset, (u32)len);
 		#endif
 		/* Ok so how much can we use? */
 		used = skb->len - offset;
@@ -2109,14 +2109,14 @@ do_prequeue:
 		/* Do we have urgent data here? */
 		if (tp->urg_data) {
 			u32 urg_offset = tp->urg_seq - *seq;
-			#if DERAND_ENABLE
-			derand_general_event(sk, 220, ((u64)tp->urg_seq << 32) | *seq);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 20, 0b00, tp->urg_seq, *seq);
+			#if DETER_ENABLE
+			deter_general_event(sk, 220, ((u64)tp->urg_seq << 32) | *seq);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 20, 0b00, tp->urg_seq, *seq);
 			#endif
 			if (urg_offset < used) {
-				#if DERAND_ENABLE
-				derand_general_event(sk, 221, used);
-				derand_advanced_event(sk, DR_TCP_RECVMSG, 21, 0b1, used);
+				#if DETER_ENABLE
+				deter_general_event(sk, 221, used);
+				deter_advanced_event(sk, DR_TCP_RECVMSG, 21, 0b1, used);
 				#endif
 				if (!urg_offset) {
 					if (!sock_flag(sk, SOCK_URGINLINE)) {
@@ -2132,15 +2132,15 @@ do_prequeue:
 			}
 		}
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 222, used);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 22, 0b1, used);
+		#if DETER_ENABLE
+		deter_general_event(sk, 222, used);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 22, 0b1, used);
 		#endif
 		if (!(flags & MSG_TRUNC)) {
 			err = skb_copy_datagram_msg(skb, offset, msg, used);
-			#if DERAND_ENABLE
-			derand_general_event(sk, 223, err);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 23, 0b0, err);
+			#if DETER_ENABLE
+			deter_general_event(sk, 223, err);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 23, 0b0, err);
 			#endif
 			if (err) {
 				/* Exception. Bailout! */
@@ -2157,9 +2157,9 @@ do_prequeue:
 		tcp_rcv_space_adjust(sk);
 
 skip_copy:
-		#if DERAND_ENABLE
-		derand_general_event(sk, 224, copied);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 24, 0b0, copied);
+		#if DETER_ENABLE
+		deter_general_event(sk, 224, copied);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 24, 0b0, copied);
 		#endif
 		if (tp->urg_data && after(tp->copied_seq, tp->urg_seq)) {
 			tp->urg_data = 0;
@@ -2168,9 +2168,9 @@ skip_copy:
 		if (used + offset < skb->len)
 			continue;
 
-		#if DERAND_ENABLE
-		derand_general_event(sk, 225, ((u64)used << 32) | offset);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 25, 0b10, used, offset);
+		#if DETER_ENABLE
+		deter_general_event(sk, 225, ((u64)used << 32) | offset);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 25, 0b10, used, offset);
 		#endif
 		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 			goto found_fin_ok;
@@ -2179,9 +2179,9 @@ skip_copy:
 		continue;
 
 	found_fin_ok:
-		#if DERAND_ENABLE
-		derand_general_event(sk, 226, *seq);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 26, 0b0, *seq);
+		#if DETER_ENABLE
+		deter_general_event(sk, 226, *seq);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 26, 0b0, *seq);
 		#endif
 		/* Process the FIN. */
 		++*seq;
@@ -2191,18 +2191,18 @@ skip_copy:
 	} while (len > 0);
 
 	if (user_recv) {
-		#if DERAND_ENABLE
-		derand_general_event(sk, 227, 0);
-		derand_advanced_event(sk, DR_TCP_RECVMSG, 27, 0b0, 0);
+		#if DETER_ENABLE
+		deter_general_event(sk, 227, 0);
+		deter_advanced_event(sk, DR_TCP_RECVMSG, 27, 0b0, 0);
 		#endif
 		if (!skb_queue_empty(&tp->ucopy.prequeue)) {
 			int chunk;
 
 			tp->ucopy.len = copied > 0 ? len : 0;
 
-			#if DERAND_ENABLE
-			derand_general_event(sk, 228, tp->ucopy.len);
-			derand_advanced_event(sk, DR_TCP_RECVMSG, 28, 0b0, tp->ucopy.len);
+			#if DETER_ENABLE
+			deter_general_event(sk, 228, tp->ucopy.len);
+			deter_advanced_event(sk, DR_TCP_RECVMSG, 28, 0b0, tp->ucopy.len);
 			#endif
 			tcp_prequeue_process(sk);
 
@@ -2224,34 +2224,34 @@ skip_copy:
 	/* Clean up data we have read: This will do ACK frames. */
 	tcp_cleanup_rbuf(sk, copied);
 
-	#if DERAND_ENABLE
-	derand_release_sock(sk, sc_id | (3 << 29));
+	#if DETER_ENABLE
+	deter_release_sock(sk, sc_id | (3 << 29));
 	#else
 	release_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif /* DETER_ENABLE */
 	return copied;
 
 out:
-	#if DERAND_ENABLE
-	derand_release_sock(sk, sc_id | (4 << 29));
+	#if DETER_ENABLE
+	deter_release_sock(sk, sc_id | (4 << 29));
 	#else
 	release_sock(sk);
-	#endif /* DERAND_ENABLE */
+	#endif /* DETER_ENABLE */
 	return err;
 
 recv_urg:
 	err = tcp_recv_urg(sk, msg, len, flags);
-	#if DERAND_ENABLE
-	derand_general_event(sk, 229, err);
-	derand_advanced_event(sk, DR_TCP_RECVMSG, 29, 0b0, err);
+	#if DETER_ENABLE
+	deter_general_event(sk, 229, err);
+	deter_advanced_event(sk, DR_TCP_RECVMSG, 29, 0b0, err);
 	#endif
 	goto out;
 
 recv_sndq:
 	err = tcp_peek_sndq(sk, msg, len);
-	#if DERAND_ENABLE
-	derand_general_event(sk, 230, err);
-	derand_advanced_event(sk, DR_TCP_RECVMSG, 30, 0b0, err);
+	#if DETER_ENABLE
+	deter_general_event(sk, 230, err);
+	deter_advanced_event(sk, DR_TCP_RECVMSG, 30, 0b0, err);
 	#endif
 	goto out;
 }
@@ -2371,10 +2371,10 @@ void tcp_close(struct sock *sk, long timeout)
 	int data_was_unread = 0;
 	int state;
 
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	u32 sc_id;
-	sc_id = derand_record_ops.new_close(sk, timeout);
-	derand_lock_sock(sk, sc_id | (0 << 29));
+	sc_id = deter_record_ops.new_close(sk, timeout);
+	deter_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
 	#endif
@@ -2459,8 +2459,8 @@ void tcp_close(struct sock *sk, long timeout)
 		tcp_send_fin(sk);
 	}
 
-	#if DERAND_ENABLE
-	derand_sk_stream_wait_close(sk, timeout, sc_id | (6<<29));
+	#if DETER_ENABLE
+	deter_sk_stream_wait_close(sk, timeout, sc_id | (6<<29));
 	#else
 	sk_stream_wait_close(sk, timeout);
 	#endif
@@ -2471,8 +2471,8 @@ adjudge_to_death:
 	sock_orphan(sk);
 
 	/* It is the last release_sock in its life. It will remove backlog. */
-	#if DERAND_ENABLE
-	derand_release_sock(sk, sc_id | (1<<29));
+	#if DETER_ENABLE
+	deter_release_sock(sk, sc_id | (1<<29));
 	#else
 	release_sock(sk);
 	#endif
@@ -2482,12 +2482,12 @@ adjudge_to_death:
 	   to finish close. No need to check for user refs.
 	 */
 	local_bh_disable();
-	#if DERAND_ENABLE
-	derand_record_ops.sockcall_before_lock(sk, sc_id | (2<<29));
+	#if DETER_ENABLE
+	deter_record_ops.sockcall_before_lock(sk, sc_id | (2<<29));
 	#endif
 	bh_lock_sock(sk);
-	#if DERAND_ENABLE
-	derand_record_ops.sockcall_lock(sk, sc_id | (2<<29));
+	#if DETER_ENABLE
+	deter_record_ops.sockcall_lock(sk, sc_id | (2<<29));
 	#endif
 	WARN_ON(sock_owned_by_user(sk));
 
@@ -2704,7 +2704,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	int val;
 	int err = 0;
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	u32 sc_id;
 	#endif
 
@@ -2722,18 +2722,18 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			return -EFAULT;
 		name[val] = 0;
 
-		#if DERAND_ENABLE
+		#if DETER_ENABLE
 		// Only from here this setsockopt is useful.
-		// This won't conflict with the later derand_record_ops.new_setsockopt, 
+		// This won't conflict with the later deter_record_ops.new_setsockopt, 
 		// because we have `return` just after the release_sock
-		sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
-		derand_lock_sock(sk, sc_id | (0 << 29));
+		sc_id = deter_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+		deter_lock_sock(sk, sc_id | (0 << 29));
 		#else
 		lock_sock(sk);
 		#endif
 		err = tcp_set_congestion_control(sk, name);
-		#if DERAND_ENABLE
-		derand_release_sock(sk, sc_id | (1 << 29));
+		#if DETER_ENABLE
+		deter_release_sock(sk, sc_id | (1 << 29));
 		#else
 		release_sock(sk);
 		#endif
@@ -2750,10 +2750,10 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	if (get_user(val, (int __user *)optval))
 		return -EFAULT;
 
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	// Only from here this setsockopt is useful.
-	sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
-	derand_lock_sock(sk, sc_id | (2 << 29));
+	sc_id = deter_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+	deter_lock_sock(sk, sc_id | (2 << 29));
 	#else
 	lock_sock(sk);
 	#endif
@@ -2990,8 +2990,8 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		if (!tp->repair)
 			err = -EPERM;
 		else
-			#if DERAND_ENABLE
-			tp->tsoffset = val - derand_tcp_time_stamp(sk, 3);
+			#if DETER_ENABLE
+			tp->tsoffset = val - deter_tcp_time_stamp(sk, 3);
 			#else
 			tp->tsoffset = val - tcp_time_stamp;
 			#endif
@@ -3005,8 +3005,8 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		break;
 	}
 
-	#if DERAND_ENABLE
-	derand_release_sock(sk, sc_id | (3 << 29));
+	#if DETER_ENABLE
+	deter_release_sock(sk, sc_id | (3 << 29));
 	#else
 	release_sock(sk);
 	#endif
@@ -3042,8 +3042,8 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 {
 	const struct tcp_sock *tp = tcp_sk(sk); /* iff sk_type == SOCK_STREAM */
 	const struct inet_connection_sock *icsk = inet_csk(sk);
-	#if DERAND_ENABLE
-	u32 now = derand_tcp_time_stamp(sk, 4);
+	#if DETER_ENABLE
+	u32 now = deter_tcp_time_stamp(sk, 4);
 	#else
 	u32 now = tcp_time_stamp;
 	#endif
@@ -3269,8 +3269,8 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 	case TCP_TIMESTAMP:
-		#if DERAND_ENABLE
-		val = derand_tcp_time_stamp(sk, 5) + tp->tsoffset;
+		#if DETER_ENABLE
+		val = deter_tcp_time_stamp(sk, 5) + tp->tsoffset;
 		#else
 		val = tcp_time_stamp + tp->tsoffset;
 		#endif

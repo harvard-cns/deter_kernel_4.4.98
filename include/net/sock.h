@@ -68,8 +68,8 @@
 #include <net/checksum.h>
 #include <net/tcp_states.h>
 #include <linux/net_tstamp.h>
-/* DERAND */
-#include <net/derand.h>
+/* DETER */
+#include <net/deter.h>
 
 struct cgroup;
 struct cgroup_subsys;
@@ -462,8 +462,8 @@ struct sock {
 						  struct sk_buff *skb);
 	void                    (*sk_destruct)(struct sock *sk);
 
-#if DERAND_ENABLE
-/* DERAND related information */
+#if DETER_ENABLE
+/* DETER related information */
 	void *recorder;
 	void *replayer;
 #endif
@@ -850,22 +850,22 @@ static inline bool sk_rcvqueues_full(const struct sock *sk, unsigned int limit)
 	return qsize > limit;
 }
 
-#if DERAND_ENABLE
+#if DETER_ENABLE
 /* A effect of type bool */
-extern void (*derand_record_effect_bool)(const struct sock *sk, int loc, bool v);
-extern bool (*derand_replay_effect_bool)(const struct sock *sk, int loc);
+extern void (*deter_record_effect_bool)(const struct sock *sk, int loc, bool v);
+extern bool (*deter_replay_effect_bool)(const struct sock *sk, int loc);
 
 // check if in replay mode below. 
 // [not true] Replay should also run exp, because exp may have side effect
-#define derand_effect_bool(sk, loc, exp)\
+#define deter_effect_bool(sk, loc, exp)\
 	({ \
 	 	bool ret; \
-	 	if (sk->replayer && derand_replay_effect_bool) \
-	 		ret = derand_replay_effect_bool(sk, loc); \
+	 	if (sk->replayer && deter_replay_effect_bool) \
+	 		ret = deter_replay_effect_bool(sk, loc); \
 	 	else { \
 			ret = (exp); \
-			if (sk->recorder && derand_record_effect_bool) \
-				derand_record_effect_bool(sk, loc, ret); \
+			if (sk->recorder && deter_record_effect_bool) \
+				deter_record_effect_bool(sk, loc, ret); \
 	 	} \
 	 	ret; \
 	})
@@ -873,7 +873,7 @@ extern bool (*derand_replay_effect_bool)(const struct sock *sk, int loc);
 // for advanced_event
 extern void (*advanced_event)(const struct sock *sk, u8 func_num, u8 loc, u8 fmt, int n, ...);
 
-enum derand_func_enum{
+enum deter_func_enum{
 	DR_TCP_SENDMSG = 0,
 	DR_TCP_RECVMSG = 1,
 	DR_TCP_CLOSE = 2,
@@ -916,7 +916,7 @@ enum derand_func_enum{
 #define PP_RSEQ_N() 16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 
 #if 1
-#define derand_advanced_event(sk, func_num, loc, fmt, ...) \
+#define deter_advanced_event(sk, func_num, loc, fmt, ...) \
 	do{ \
 		if (advanced_event){ \
 			if ((sk)->recorder || (sk)->replayer) \
@@ -924,24 +924,24 @@ enum derand_func_enum{
 		} \
 	} while (0)
 #else
-#define derand_advanced_event(sk, func_num, loc, fmt, ...) do{}while(0)
+#define deter_advanced_event(sk, func_num, loc, fmt, ...) do{}while(0)
 #endif
 
 /* alert */
-extern void (*derand_record_alert)(const struct sock *sk, int loc);
-static inline void derand_alert(const struct sock* sk, int loc){
-	if (derand_record_alert)
+extern void (*deter_record_alert)(const struct sock *sk, int loc);
+static inline void deter_alert(const struct sock* sk, int loc){
+	if (deter_record_alert)
 		if (sk->recorder)
-			derand_record_alert(sk, loc);
+			deter_record_alert(sk, loc);
 }
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */
 
 /* The per-socket spinlock must be held here. */
 static inline __must_check int sk_add_backlog(struct sock *sk, struct sk_buff *skb,
 					      unsigned int limit)
 {
-	#if DERAND_ENABLE
-	if (derand_effect_bool(sk, 0, sk_rcvqueues_full(sk, limit)))
+	#if DETER_ENABLE
+	if (deter_effect_bool(sk, 0, sk_rcvqueues_full(sk, limit)))
 	#else
 	if (sk_rcvqueues_full(sk, limit))
 	#endif
@@ -1023,20 +1023,20 @@ static inline void sock_rps_reset_rxhash(struct sock *sk)
 		__rc;							\
 	})
 
-#if DERAND_ENABLE
-#define derand_sk_wait_event(__sk, __timeo, __condition, sc_id)			\
+#if DETER_ENABLE
+#define deter_sk_wait_event(__sk, __timeo, __condition, sc_id)			\
 	({	int __rc;						\
-		derand_release_sock(__sk, (sc_id) + (0 << 29));					\
+		deter_release_sock(__sk, (sc_id) + (0 << 29));					\
 		__rc = __condition;					\
 		if (!__rc) {						\
 			*(__timeo) = schedule_timeout(*(__timeo));	\
 		}							\
 		sched_annotate_sleep();						\
-		derand_lock_sock(__sk, (sc_id) + (1 << 29));					\
+		deter_lock_sock(__sk, (sc_id) + (1 << 29));					\
 		__rc = __condition;					\
 		__rc;							\
 	})
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */
 
 int sk_stream_wait_connect(struct sock *sk, long *timeo_p);
 int sk_stream_wait_memory(struct sock *sk, long *timeo_p);
@@ -1047,11 +1047,11 @@ void sk_set_memalloc(struct sock *sk);
 void sk_clear_memalloc(struct sock *sk);
 
 int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb);
-#if DERAND_ENABLE
-int derand_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id);
-int derand_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id);
-void derand_sk_stream_wait_close(struct sock *sk, long timeo_p, u32 sc_id);
-#endif /* DERAND_ENABLE */
+#if DETER_ENABLE
+int deter_sk_stream_wait_memory(struct sock *sk, long *timeo_p, u32 sc_id);
+int deter_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id);
+void deter_sk_stream_wait_close(struct sock *sk, long timeo_p, u32 sc_id);
+#endif /* DETER_ENABLE */
 
 struct request_sock_ops;
 struct timewait_sock_ops;
@@ -1613,16 +1613,16 @@ static inline void lock_sock(struct sock *sk)
 
 void release_sock(struct sock *sk);
 
-#if DERAND_ENABLE
-void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id);
+#if DETER_ENABLE
+void deter_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id);
 
-static inline void derand_lock_sock(struct sock *sk, u32 sc_id)
+static inline void deter_lock_sock(struct sock *sk, u32 sc_id)
 {
-	derand_lock_sock_nested(sk, 0, sc_id);
+	deter_lock_sock_nested(sk, 0, sc_id);
 }
 
-void derand_release_sock(struct sock *sk, u32 sc_id);
-#endif /* DERAND_ENABLE */
+void deter_release_sock(struct sock *sk, u32 sc_id);
+#endif /* DETER_ENABLE */
 
 /* BH context may only use the following locking interface. */
 #define bh_lock_sock(__sk)	spin_lock(&((__sk)->sk_lock.slock))
@@ -2212,8 +2212,8 @@ static inline void sk_stream_moderate_sndbuf(struct sock *sk)
 		sk->sk_sndbuf = min(sk->sk_sndbuf, sk->sk_wmem_queued >> 1);
 		sk->sk_sndbuf = max_t(u32, sk->sk_sndbuf, SOCK_MIN_SNDBUF);
 	}
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_SK_STREAM_MODERATE_SNDBUF, 0, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_SK_STREAM_MODERATE_SNDBUF, 0, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
 	#endif
 }
 
@@ -2229,7 +2229,7 @@ struct sk_buff *sk_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
  */
 static inline struct page_frag *sk_page_frag(struct sock *sk)
 {
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	// Using current->task_frag introduces unnecessary trouble for replay.
 	// For instance, the same thread may interleavingly sendmsg to two sockets,
 	// thus for each sendmsg, the state of task_frag is the result of a sendmsg at 
@@ -2251,9 +2251,9 @@ bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag);
  */
 static inline bool sock_writeable(const struct sock *sk)
 {
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	// I believe this function is not used by tcp socket. But if it does, let me know.
-	derand_alert(sk, 0);
+	deter_alert(sk, 0);
 	#endif
 	return atomic_read(&sk->sk_wmem_alloc) < (sk->sk_sndbuf >> 1);
 }

@@ -22,8 +22,8 @@
 
 #include <net/inet_sock.h>
 #include <net/request_sock.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 #define INET_CSK_DEBUG 1
 
@@ -226,8 +226,8 @@ static inline void inet_csk_reset_xmit_timer(struct sock *sk, const int what,
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_INET_CSK_RESET_XMIT_TIMER, 0, 0b011, what, when, max_when);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_INET_CSK_RESET_XMIT_TIMER, 0, 0b011, what, when, max_when);
 	#endif
 	if (when > max_when) {
 #ifdef INET_CSK_DEBUG
@@ -240,16 +240,16 @@ static inline void inet_csk_reset_xmit_timer(struct sock *sk, const int what,
 	if (what == ICSK_TIME_RETRANS || what == ICSK_TIME_PROBE0 ||
 	    what == ICSK_TIME_EARLY_RETRANS || what ==  ICSK_TIME_LOSS_PROBE) {
 		icsk->icsk_pending = what;
-		#if DERAND_ENABLE
-		icsk->icsk_timeout = derand_jiffies(sk, 10) + when;
+		#if DETER_ENABLE
+		icsk->icsk_timeout = deter_jiffies(sk, 10) + when;
 		#else
 		icsk->icsk_timeout = jiffies + when;
 		#endif
 		sk_reset_timer(sk, &icsk->icsk_retransmit_timer, icsk->icsk_timeout);
 	} else if (what == ICSK_TIME_DACK) {
 		icsk->icsk_ack.pending |= ICSK_ACK_TIMER;
-		#if DERAND_ENABLE
-		icsk->icsk_ack.timeout = derand_jiffies(sk, 11) + when;
+		#if DETER_ENABLE
+		icsk->icsk_ack.timeout = deter_jiffies(sk, 11) + when;
 		#else
 		icsk->icsk_ack.timeout = jiffies + when;
 		#endif

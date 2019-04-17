@@ -1,14 +1,14 @@
-#ifndef _NET_DERAND_OPS_H
-#define _NET_DERAND_OPS_H
+#ifndef _NET_DETER_OPS_H
+#define _NET_DETER_OPS_H
 
-#include <net/derand.h>
+#include <net/deter.h>
 #include <net/sock.h>
 #include <linux/socket.h>
 #include <linux/jiffies.h>
 
-#if DERAND_ENABLE
+#if DETER_ENABLE
 
-struct derand_record_ops{
+struct deter_record_ops{
 	/* Create a recorder at server side */
 	void (*server_recorder_create)(struct sock*, struct sk_buff *skb);
 
@@ -136,41 +136,41 @@ struct derand_record_ops{
 	void (*tx_stamp)(const struct sk_buff *skb);
 };
 
-extern struct derand_record_ops derand_record_ops_default;
-extern struct derand_record_ops derand_record_ops;
+extern struct deter_record_ops deter_record_ops_default;
+extern struct deter_record_ops deter_record_ops;
 
 /* A read to jiffies. ID is diff for each location of read in the code */
-static inline unsigned long derand_jiffies(const struct sock *sk, int id){
+static inline unsigned long deter_jiffies(const struct sock *sk, int id){
 	unsigned long res;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_jiffies)
-		return derand_record_ops.replay_jiffies(sk, id);
+	if (sk->replayer && deter_record_ops.replay_jiffies)
+		return deter_record_ops.replay_jiffies(sk, id);
 
 	// not in replay mode
 	res = jiffies;
-	if (sk->recorder && derand_record_ops.read_jiffies)
-		derand_record_ops.read_jiffies(sk, res, id);
+	if (sk->recorder && deter_record_ops.read_jiffies)
+		deter_record_ops.read_jiffies(sk, res, id);
 	return res;
 }
 
 /* A read to tcp_time_stamp. ID is diff for each location of read in the code */
-static inline u32 derand_tcp_time_stamp(const struct sock *sk, int id){
+static inline u32 deter_tcp_time_stamp(const struct sock *sk, int id){
 	unsigned long res;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_tcp_time_stamp)
-		return (u32)derand_record_ops.replay_tcp_time_stamp(sk, id);
+	if (sk->replayer && deter_record_ops.replay_tcp_time_stamp)
+		return (u32)deter_record_ops.replay_tcp_time_stamp(sk, id);
 	
 	// not in replay mode
 	res = jiffies;
-	if (sk->recorder && derand_record_ops.read_tcp_time_stamp)
-		derand_record_ops.read_tcp_time_stamp(sk, res, id);
+	if (sk->recorder && deter_record_ops.read_tcp_time_stamp)
+		deter_record_ops.read_tcp_time_stamp(sk, res, id);
 	return (u32)res;
 }
 
 extern int tcp_memory_pressure;
 
 /* Copy of tcp_under_memory_pressure */
-static inline bool derand_copied_tcp_under_memory_pressure(const struct sock *sk)
+static inline bool deter_copied_tcp_under_memory_pressure(const struct sock *sk)
 {
 	if (mem_cgroup_sockets_enabled && sk->sk_cgrp)
 		return !!sk->sk_cgrp->memory_pressure;
@@ -179,74 +179,74 @@ static inline bool derand_copied_tcp_under_memory_pressure(const struct sock *sk
 }
 
 /* A read to tcp_under_memory_pressure */
-static inline bool derand_tcp_under_memory_pressure(const struct sock *sk){
+static inline bool deter_tcp_under_memory_pressure(const struct sock *sk){
 	bool ret;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_tcp_under_memory_pressure)
-		return derand_record_ops.replay_tcp_under_memory_pressure(sk);
+	if (sk->replayer && deter_record_ops.replay_tcp_under_memory_pressure)
+		return deter_record_ops.replay_tcp_under_memory_pressure(sk);
 	
 	// not in replay mode
-	ret = derand_copied_tcp_under_memory_pressure(sk);
+	ret = deter_copied_tcp_under_memory_pressure(sk);
 
 	// if in record mode
-	if (sk->recorder && derand_record_ops.tcp_under_memory_pressure)
-		derand_record_ops.tcp_under_memory_pressure(sk, ret);
+	if (sk->recorder && deter_record_ops.tcp_under_memory_pressure)
+		deter_record_ops.tcp_under_memory_pressure(sk, ret);
 	return ret;
 }
 
 /* a read to sk_under_memory_pressure */
-static inline bool derand_sk_under_memory_pressure(const struct sock *sk){
+static inline bool deter_sk_under_memory_pressure(const struct sock *sk){
 	bool ret;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_sk_under_memory_pressure)
-		return derand_record_ops.replay_sk_under_memory_pressure(sk);
+	if (sk->replayer && deter_record_ops.replay_sk_under_memory_pressure)
+		return deter_record_ops.replay_sk_under_memory_pressure(sk);
 	
 	// not in replay mode
 	ret = sk_under_memory_pressure(sk);
 
 	// if in record mode
-	if (sk->recorder && derand_record_ops.sk_under_memory_pressure)
-		derand_record_ops.sk_under_memory_pressure(sk, ret);
+	if (sk->recorder && deter_record_ops.sk_under_memory_pressure)
+		deter_record_ops.sk_under_memory_pressure(sk, ret);
 	return ret;
 }
 
 /* A call to sk_memory_allocated */
-static inline long derand_sk_memory_allocated(const struct sock *sk){
+static inline long deter_sk_memory_allocated(const struct sock *sk){
 	long ret;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_sk_memory_allocated)
-		return derand_record_ops.replay_sk_memory_allocated(sk);
+	if (sk->replayer && deter_record_ops.replay_sk_memory_allocated)
+		return deter_record_ops.replay_sk_memory_allocated(sk);
 
 	// not in replay mode
 	ret = sk_memory_allocated(sk);
 
 	// if in record mode
-	if (sk->recorder && derand_record_ops.sk_memory_allocated)
-		derand_record_ops.sk_memory_allocated(sk, ret);
+	if (sk->recorder && deter_record_ops.sk_memory_allocated)
+		deter_record_ops.sk_memory_allocated(sk, ret);
 	return ret;
 }
 
 /* A call to sk_sockets_allocated_read_positive */
-static inline int derand_sk_sockets_allocated_read_positive(struct sock *sk){
+static inline int deter_sk_sockets_allocated_read_positive(struct sock *sk){
 	int ret;
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.replay_sk_socket_allocated_read_positive)
-		return derand_record_ops.replay_sk_socket_allocated_read_positive(sk);
+	if (sk->replayer && deter_record_ops.replay_sk_socket_allocated_read_positive)
+		return deter_record_ops.replay_sk_socket_allocated_read_positive(sk);
 
 	// not in replay mode
 	ret = sk_sockets_allocated_read_positive(sk);
 
 	// if in record mode
-	if (sk->recorder && derand_record_ops.sk_sockets_allocated_read_positive)
-		derand_record_ops.sk_sockets_allocated_read_positive(sk, ret);
+	if (sk->recorder && deter_record_ops.sk_sockets_allocated_read_positive)
+		deter_record_ops.sk_sockets_allocated_read_positive(sk, ret);
 	return ret;
 }
 
 /* A call to skb_mstamp_get */
-static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl, int loc){
+static inline void deter_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl, int loc){
 	// check if in replay mode
-	if (sk->replayer && derand_record_ops.skb_mstamp_get){
-		derand_record_ops.skb_mstamp_get(sk, cl, loc);
+	if (sk->replayer && deter_record_ops.skb_mstamp_get){
+		deter_record_ops.skb_mstamp_get(sk, cl, loc);
 		return;
 	}
 
@@ -254,32 +254,32 @@ static inline void derand_skb_mstamp_get(struct sock *sk, struct skb_mstamp *cl,
 	skb_mstamp_get(cl);
 
 	// if in record mode
-	if (sk->recorder && derand_record_ops.skb_mstamp_get)
-		derand_record_ops.skb_mstamp_get(sk, cl, loc);
+	if (sk->recorder && deter_record_ops.skb_mstamp_get)
+		deter_record_ops.skb_mstamp_get(sk, cl, loc);
 }
 
 /* A call to skb_still_in_host_queue */
-#define derand_skb_still_in_host_queue(sk, skb, call) \
+#define deter_skb_still_in_host_queue(sk, skb, call) \
 	({ \
 		bool ret; \
-		if (sk->replayer && derand_record_ops.replay_skb_still_in_host_queue) \
-			ret = derand_record_ops.replay_skb_still_in_host_queue(sk, skb); \
+		if (sk->replayer && deter_record_ops.replay_skb_still_in_host_queue) \
+			ret = deter_record_ops.replay_skb_still_in_host_queue(sk, skb); \
 		else { \
 			ret = (call); \
-			if (sk->recorder && derand_record_ops.record_skb_still_in_host_queue) \
-				derand_record_ops.record_skb_still_in_host_queue(sk, ret); \
+			if (sk->recorder && deter_record_ops.record_skb_still_in_host_queue) \
+				deter_record_ops.record_skb_still_in_host_queue(sk, ret); \
 		} \
 		ret; \
 	})
 
 /* A general event */
-static inline void derand_general_event(const struct sock *sk, int loc, u64 data){
-	if (derand_record_ops.general_event){
+static inline void deter_general_event(const struct sock *sk, int loc, u64 data){
+	if (deter_record_ops.general_event){
 		if (sk->recorder || sk->replayer)
-			derand_record_ops.general_event(sk, loc, data);
+			deter_record_ops.general_event(sk, loc, data);
 	}
 }
 
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */
 
-#endif /* _NET_DERAND_OPS_H */
+#endif /* _NET_DETER_OPS_H */

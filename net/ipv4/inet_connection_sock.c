@@ -24,8 +24,8 @@
 #include <net/tcp_states.h>
 #include <net/xfrm.h>
 #include <net/tcp.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 #ifdef INET_CSK_DEBUG
 const char inet_csk_timer_bug_msg[] = "inet_csk BUG: unknown timer value\n";
@@ -404,8 +404,8 @@ EXPORT_SYMBOL(inet_csk_delete_keepalive_timer);
 
 void inet_csk_reset_keepalive_timer(struct sock *sk, unsigned long len)
 {
-	#if DERAND_ENABLE
-	sk_reset_timer(sk, &sk->sk_timer, derand_jiffies(sk, 12) + len);
+	#if DETER_ENABLE
+	sk_reset_timer(sk, &sk->sk_timer, deter_jiffies(sk, 12) + len);
 	#else
 	sk_reset_timer(sk, &sk->sk_timer, jiffies + len);
 	#endif

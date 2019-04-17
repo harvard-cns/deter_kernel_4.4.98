@@ -26,8 +26,8 @@
 #include <net/tcp.h>
 #include <net/inet_common.h>
 #include <net/xfrm.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 int sysctl_tcp_syncookies __read_mostly = 1;
 EXPORT_SYMBOL(sysctl_tcp_syncookies);
@@ -474,8 +474,8 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 		newtp->mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT);
 		newtp->rtt_min[0].rtt = ~0U;
 		newicsk->icsk_rto = TCP_TIMEOUT_INIT;
-		#if DERAND_ENABLE
-		newicsk->icsk_ack.lrcvtime = derand_tcp_time_stamp(newsk, 33); // should be irrelavent: this is before we create recorder
+		#if DETER_ENABLE
+		newicsk->icsk_ack.lrcvtime = deter_tcp_time_stamp(newsk, 33); // should be irrelavent: this is before we create recorder
 		#else
 		newicsk->icsk_ack.lrcvtime = tcp_time_stamp;
 		#endif
@@ -599,13 +599,13 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 			 */
 			tmp_opt.ts_recent_stamp = get_seconds() - ((TCP_TIMEOUT_INIT/HZ)<<req->num_timeout);
 			paws_reject = tcp_paws_reject(&tmp_opt, th->rst);
-			#if DERAND_ENABLE
+			#if DETER_ENABLE
 			/* If this is for replay, ignore the paws check.
 			 * Otherwise, paws check is likely to fail, because when
 			 * client sends the ACK, its timestamp is already changed
 			 * to the recorded, but this listening socket has the
 			 * unchanged values. So paws check may fail.*/
-			paws_reject &= !derand_record_ops.to_replay_server(sk);
+			paws_reject &= !deter_record_ops.to_replay_server(sk);
 			#endif
 		}
 	}
@@ -642,8 +642,8 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 					  &tcp_rsk(req)->last_oow_ack_time) &&
 
 		    !inet_rtx_syn_ack(sk, req)) {
-			#if DERAND_ENABLE
-			unsigned long expires = derand_jiffies(sk, 4); // should be irrelavent: this is before server creates a new sock. I.e., the sk is the listening sock
+			#if DETER_ENABLE
+			unsigned long expires = deter_jiffies(sk, 4); // should be irrelavent: this is before server creates a new sock. I.e., the sk is the listening sock
 			#else
 			unsigned long expires = jiffies;
 			#endif

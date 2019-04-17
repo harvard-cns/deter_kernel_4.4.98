@@ -143,7 +143,7 @@
 
 #include <net/busy_poll.h>
 
-#include <net/derand_ops.h>
+#include <net/deter_ops.h>
 
 static DEFINE_MUTEX(proto_list_mutex);
 static LIST_HEAD(proto_list);
@@ -696,7 +696,7 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 	int valbool;
 	struct linger ling;
 	int ret = 0;
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	u32 sc_id;
 	#endif
 
@@ -715,10 +715,10 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 
 	valbool = val ? 1 : 0;
 
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	// Only from here this setsockopt is useful.
-	sc_id = derand_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
-	derand_lock_sock(sk, sc_id | (0 << 29));
+	sc_id = deter_record_ops.new_setsockopt(sk, level, optname, optval, optlen);
+	deter_lock_sock(sk, sc_id | (0 << 29));
 	#else
 	lock_sock(sk);
 	#endif
@@ -1019,8 +1019,8 @@ set_rcvbuf:
 		ret = -ENOPROTOOPT;
 		break;
 	}
-	#if DERAND_ENABLE
-	derand_release_sock(sk, sc_id | (1 << 29));
+	#if DETER_ENABLE
+	deter_release_sock(sk, sc_id | (1 << 29));
 	#else
 	release_sock(sk);
 	#endif
@@ -1459,8 +1459,8 @@ void sk_destruct(struct sock *sk)
 {
 	struct sk_filter *filter;
 
-	#if DERAND_ENABLE
-	derand_record_ops.recorder_destruct(sk);
+	#if DETER_ENABLE
+	deter_record_ops.recorder_destruct(sk);
 	// NOTE: we do not need to worry about the wmem_alloc reads below, as the sk has finished
 	#endif
 	if (sk->sk_destruct)
@@ -1950,7 +1950,7 @@ int sock_cmsg_send(struct sock *sk, struct msghdr *msg,
 }
 EXPORT_SYMBOL(sock_cmsg_send);
 
-#if DERAND_ENABLE
+#if DETER_ENABLE
 /* To avoid page allocate to affect replay, an skb frag is limited to 4096 */
 #define SKB_FRAG_PAGE_ORDER get_order(PAGE_SIZE)
 #else
@@ -2000,11 +2000,11 @@ bool skb_page_frag_refill(unsigned int sz, struct page_frag *pfrag, gfp_t gfp)
 	return false;
 }
 EXPORT_SYMBOL(skb_page_frag_refill);
-#if DERAND_ENABLE
-bool derand_skb_page_frag_refill(const struct sock *sk, unsigned int sz, struct page_frag *pfrag, gfp_t gfp)
+#if DETER_ENABLE
+bool deter_skb_page_frag_refill(const struct sock *sk, unsigned int sz, struct page_frag *pfrag, gfp_t gfp)
 {
 	if (pfrag->page) {
-		if (derand_effect_bool(sk, 1, (atomic_read(&pfrag->page->_count) == 1))) {
+		if (deter_effect_bool(sk, 1, (atomic_read(&pfrag->page->_count) == 1))) {
 			pfrag->offset = 0;
 			return true;
 		}
@@ -2032,13 +2032,13 @@ bool derand_skb_page_frag_refill(const struct sock *sk, unsigned int sz, struct 
 	}
 	return false;
 }
-EXPORT_SYMBOL(derand_skb_page_frag_refill);
-#endif /* DERAND_ENABLE */
+EXPORT_SYMBOL(deter_skb_page_frag_refill);
+#endif /* DETER_ENABLE */
 
 bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag)
 {
-	#if DERAND_ENABLE
-	if (likely(derand_skb_page_frag_refill(sk, 32U, pfrag, sk->sk_allocation)))
+	#if DETER_ENABLE
+	if (likely(deter_skb_page_frag_refill(sk, 32U, pfrag, sk->sk_allocation)))
 	#else
 	if (likely(skb_page_frag_refill(32U, pfrag, sk->sk_allocation)))
 	#endif
@@ -2068,8 +2068,8 @@ static void __lock_sock(struct sock *sk)
 	finish_wait(&sk->sk_lock.wq, &wait);
 }
 
-#if DERAND_ENABLE
-static void __derand_lock_sock(struct sock *sk, u32 sc_id)
+#if DETER_ENABLE
+static void __deter_lock_sock(struct sock *sk, u32 sc_id)
 	__releases(&sk->sk_lock.slock)
 	__acquires(&sk->sk_lock.slock)
 {
@@ -2080,15 +2080,15 @@ static void __derand_lock_sock(struct sock *sk, u32 sc_id)
 					TASK_UNINTERRUPTIBLE);
 		spin_unlock_bh(&sk->sk_lock.slock);
 		schedule();
-		derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
+		deter_record_ops.sockcall_before_lock(sk, sc_id); /* DETER */
 		spin_lock_bh(&sk->sk_lock.slock);
-		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+		deter_record_ops.sockcall_lock(sk, sc_id); /* DETER */
 		if (!sock_owned_by_user(sk))
 			break;
 	}
 	finish_wait(&sk->sk_lock.wq, &wait);
 }
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */
 
 static void __release_sock(struct sock *sk)
 	__releases(&sk->sk_lock.slock)
@@ -2129,8 +2129,8 @@ static void __release_sock(struct sock *sk)
 	sk->sk_backlog.len = 0;
 }
 
-#if DERAND_ENABLE
-static void __derand_release_sock(struct sock *sk, u32 sc_id)
+#if DETER_ENABLE
+static void __deter_release_sock(struct sock *sk, u32 sc_id)
 	__releases(&sk->sk_lock.slock)
 	__acquires(&sk->sk_lock.slock)
 {
@@ -2159,9 +2159,9 @@ static void __derand_release_sock(struct sock *sk, u32 sc_id)
 			skb = next;
 		} while (skb != NULL);
 
-		derand_record_ops.sockcall_before_lock(sk, sc_id); /* DERAND */
+		deter_record_ops.sockcall_before_lock(sk, sc_id); /* DETER */
 		bh_lock_sock(sk);
-		derand_record_ops.sockcall_lock(sk, sc_id); /* DERAND */
+		deter_record_ops.sockcall_lock(sk, sc_id); /* DETER */
 	} while ((skb = sk->sk_backlog.head) != NULL);
 
 	/*
@@ -2170,7 +2170,7 @@ static void __derand_release_sock(struct sock *sk, u32 sc_id)
 	 */
 	sk->sk_backlog.len = 0;
 }
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */
 
 /**
  * sk_wait_data - wait for data to arrive at sk_receive_queue
@@ -2197,21 +2197,21 @@ int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb)
 }
 EXPORT_SYMBOL(sk_wait_data);
 
-#if DERAND_ENABLE
-int derand_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id)
+#if DETER_ENABLE
+int deter_sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb, u32 sc_id)
 {
 	int rc;
 	DEFINE_WAIT(wait);
 
 	prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
 	sk_set_bit(SOCKWQ_ASYNC_WAITDATA, sk);
-	rc = derand_sk_wait_event(sk, timeo, skb_peek_tail(&sk->sk_receive_queue) != skb, sc_id);
+	rc = deter_sk_wait_event(sk, timeo, skb_peek_tail(&sk->sk_receive_queue) != skb, sc_id);
 	sk_clear_bit(SOCKWQ_ASYNC_WAITDATA, sk);
 	finish_wait(sk_sleep(sk), &wait);
 	return rc;
 }
-EXPORT_SYMBOL(derand_sk_wait_data);
-#endif /* DERAND_ENABLE */
+EXPORT_SYMBOL(deter_sk_wait_data);
+#endif /* DETER_ENABLE */
 
 /**
  *	__sk_mem_schedule - increase sk_forward_alloc and memory_allocated
@@ -2235,8 +2235,8 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 	allocated = sk_memory_allocated_add(sk, amt, &parent_status);
 
 	/* Under limit. */
-	#if DERAND_ENABLE
-	if (derand_effect_bool(sk, 8, 
+	#if DETER_ENABLE
+	if (deter_effect_bool(sk, 8, 
 		parent_status == UNDER_LIMIT &&
 			allocated <= sk_prot_mem_limits(sk, 0))) {
 	#else
@@ -2248,8 +2248,8 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 	}
 
 	/* Under pressure. (we or our parents) */
-	#if DERAND_ENABLE
-	if (derand_effect_bool(sk, 9,
+	#if DETER_ENABLE
+	if (deter_effect_bool(sk, 9,
 		(parent_status > SOFT_LIMIT) ||
 			allocated > sk_prot_mem_limits(sk, 1)))
 	#else
@@ -2259,8 +2259,8 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 		sk_enter_memory_pressure(sk);
 
 	/* Over hard limit (we or our parents) */
-	#if DERAND_ENABLE
-	if (derand_effect_bool(sk, 10,
+	#if DETER_ENABLE
+	if (deter_effect_bool(sk, 10,
 		(parent_status == OVER_LIMIT) ||
 			(allocated > sk_prot_mem_limits(sk, 2))))
 	#else
@@ -2278,8 +2278,8 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 		if (sk->sk_type == SOCK_STREAM) {
 			if (sk->sk_wmem_queued < prot->sysctl_wmem[0])
 				return 1;
-		#if DERAND_ENABLE
-		} else if (derand_effect_bool(sk, 4, 
+		#if DETER_ENABLE
+		} else if (deter_effect_bool(sk, 4, 
 				   atomic_read(&sk->sk_wmem_alloc) < 
 			   prot->sysctl_wmem[0])
 				)
@@ -2293,19 +2293,19 @@ int __sk_mem_schedule(struct sock *sk, int size, int kind)
 	if (sk_has_memory_pressure(sk)) {
 		int alloc;
 
-		#if DERAND_ENABLE
-		if (!derand_sk_under_memory_pressure(sk))
+		#if DETER_ENABLE
+		if (!deter_sk_under_memory_pressure(sk))
 		#else
 		if (!sk_under_memory_pressure(sk))
 		#endif
 			return 1;
-		#if DERAND_ENABLE
-		alloc = derand_sk_sockets_allocated_read_positive(sk);
+		#if DETER_ENABLE
+		alloc = deter_sk_sockets_allocated_read_positive(sk);
 		#else
 		alloc = sk_sockets_allocated_read_positive(sk);
 		#endif
-		#if DERAND_ENABLE
-		if (derand_effect_bool(sk, 5,
+		#if DETER_ENABLE
+		if (deter_effect_bool(sk, 5,
 			sk_prot_mem_limits(sk, 2) > alloc *
 		    sk_mem_pages(sk->sk_wmem_queued +
 				 atomic_read(&sk->sk_rmem_alloc) +
@@ -2354,13 +2354,13 @@ void __sk_mem_reclaim(struct sock *sk, int amount)
 	sk_memory_allocated_sub(sk, amount);
 	sk->sk_forward_alloc -= amount << SK_MEM_QUANTUM_SHIFT;
 
-	#if DERAND_ENABLE
-	if (derand_sk_under_memory_pressure(sk) &&
+	#if DETER_ENABLE
+	if (deter_sk_under_memory_pressure(sk) &&
 	#else
 	if (sk_under_memory_pressure(sk) &&
 	#endif
-		#if DERAND_ENABLE
-	    (derand_sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))
+		#if DETER_ENABLE
+	    (deter_sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))
 		#else
 	    (sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))
 		#endif
@@ -2558,9 +2558,9 @@ EXPORT_SYMBOL(sk_send_sigurg);
 void sk_reset_timer(struct sock *sk, struct timer_list* timer,
 		    unsigned long expires)
 {
-	#if DERAND_ENABLE
-	if (derand_effect_bool(sk, 2, !mod_timer(timer, expires))){
-		derand_advanced_event(sk, DR_SK_RESET_TIMER, 0, 0b1, expires);
+	#if DETER_ENABLE
+	if (deter_effect_bool(sk, 2, !mod_timer(timer, expires))){
+		deter_advanced_event(sk, DR_SK_RESET_TIMER, 0, 0b1, expires);
 		sock_hold(sk);
 	}
 	#else
@@ -2660,15 +2660,15 @@ void lock_sock_nested(struct sock *sk, int subclass)
 }
 EXPORT_SYMBOL(lock_sock_nested);
 
-#if DERAND_ENABLE
-void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
+#if DETER_ENABLE
+void deter_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
 {
 	might_sleep();
-	derand_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
+	deter_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DETER */
 	spin_lock_bh(&sk->sk_lock.slock);
-	derand_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
+	deter_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DETER */
 	if (sk->sk_lock.owned)
-		__derand_lock_sock(sk, (sc_id) | (1 << 28));
+		__deter_lock_sock(sk, (sc_id) | (1 << 28));
 	sk->sk_lock.owned = 1;
 	spin_unlock(&sk->sk_lock.slock);
 	/*
@@ -2677,8 +2677,8 @@ void derand_lock_sock_nested(struct sock *sk, int subclass, u32 sc_id)
 	mutex_acquire(&sk->sk_lock.dep_map, subclass, 0, _RET_IP_);
 	local_bh_enable();
 }
-EXPORT_SYMBOL(derand_lock_sock_nested);
-#endif /* DERAND_ENABLE */
+EXPORT_SYMBOL(deter_lock_sock_nested);
+#endif /* DETER_ENABLE */
 
 void release_sock(struct sock *sk)
 {
@@ -2704,19 +2704,19 @@ void release_sock(struct sock *sk)
 }
 EXPORT_SYMBOL(release_sock);
 
-#if DERAND_ENABLE
-void derand_release_sock(struct sock *sk, u32 sc_id)
+#if DETER_ENABLE
+void deter_release_sock(struct sock *sk, u32 sc_id)
 {
 	/*
 	 * The sk_lock has mutex_unlock() semantics:
 	 */
 	mutex_release(&sk->sk_lock.dep_map, 1, _RET_IP_);
 
-	derand_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
+	deter_record_ops.sockcall_before_lock(sk, (sc_id) | (0 << 28)); /* DETER */
 	spin_lock_bh(&sk->sk_lock.slock);
-	derand_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DERAND */
+	deter_record_ops.sockcall_lock(sk, (sc_id) | (0 << 28)); /* DETER */
 	if (sk->sk_backlog.tail)
-		__derand_release_sock(sk, (sc_id) | (1 << 28));
+		__deter_release_sock(sk, (sc_id) | (1 << 28));
 
 	/* Warning : release_cb() might need to release sk ownership,
 	 * ie call sock_release_ownership(sk) before us.
@@ -2729,8 +2729,8 @@ void derand_release_sock(struct sock *sk, u32 sc_id)
 		wake_up(&sk->sk_lock.wq);
 	spin_unlock_bh(&sk->sk_lock.slock);
 }
-EXPORT_SYMBOL(derand_release_sock);
-#endif /* DERAND_ENABLE */
+EXPORT_SYMBOL(deter_release_sock);
+#endif /* DETER_ENABLE */
 
 /**
  * lock_sock_fast - fast version of lock_sock

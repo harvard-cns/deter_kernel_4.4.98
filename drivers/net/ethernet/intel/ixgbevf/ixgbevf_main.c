@@ -50,8 +50,8 @@
 #include <linux/if_vlan.h>
 #include <linux/prefetch.h>
 
-/* derand */
-#include <net/derand_ops.h>
+/* deter */
+#include <net/deter_ops.h>
 
 #include "ixgbevf.h"
 
@@ -3661,9 +3661,9 @@ static int ixgbevf_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	first->tx_flags = tx_flags;
 	first->protocol = vlan_get_protocol(skb);
 
-	#if DERAND_ENABLE
-	if (skb->sk && skb->sk->recorder && derand_record_ops.tx_stamp){
-		derand_record_ops.tx_stamp(skb);
+	#if DETER_ENABLE
+	if (skb->sk && skb->sk->recorder && deter_record_ops.tx_stamp){
+		deter_record_ops.tx_stamp(skb);
 	}
 	#endif
 	tso = ixgbevf_tso(tx_ring, first, &hdr_len);

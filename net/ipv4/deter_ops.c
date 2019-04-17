@@ -1,6 +1,6 @@
-#include <net/derand_ops.h>
+#include <net/deter_ops.h>
 
-#if DERAND_ENABLE
+#if DETER_ENABLE
 /* default function for create recorder */
 static void recorder_create_default(struct sock* sk, struct sk_buff* skb){
 	return;
@@ -123,7 +123,7 @@ int log_default(const struct sock *sk, const char *fmt, ...){
 
 /* Default operations.
  * All do nothing */
-struct derand_record_ops derand_record_ops_default = {
+struct deter_record_ops deter_record_ops_default = {
 	.server_recorder_create = recorder_create_default,
 	.client_recorder_create = recorder_create_default,
 	.recorder_destruct = recorder_destruct_default,
@@ -167,12 +167,12 @@ struct derand_record_ops derand_record_ops_default = {
 	.log = log_default,
 	.tx_stamp = NULL,
 };
-EXPORT_SYMBOL(derand_record_ops_default);
+EXPORT_SYMBOL(deter_record_ops_default);
 
 /* The operations that are used during runtime.
  * By default use default functions (do nothing), 
- * but DERAND kernel module can change it to concrete derand operations */
-struct derand_record_ops derand_record_ops = {
+ * but DETER kernel module can change it to concrete deter operations */
+struct deter_record_ops deter_record_ops = {
 	.server_recorder_create = recorder_create_default,
 	.client_recorder_create = recorder_create_default,
 	.recorder_destruct = recorder_destruct_default,
@@ -216,18 +216,18 @@ struct derand_record_ops derand_record_ops = {
 	.log = log_default,
 	.tx_stamp = NULL,
 };
-EXPORT_SYMBOL(derand_record_ops);
+EXPORT_SYMBOL(deter_record_ops);
 
-void (*derand_record_effect_bool)(const struct sock *sk, int loc, bool v) = NULL;
-EXPORT_SYMBOL(derand_record_effect_bool);
+void (*deter_record_effect_bool)(const struct sock *sk, int loc, bool v) = NULL;
+EXPORT_SYMBOL(deter_record_effect_bool);
 
-bool (*derand_replay_effect_bool)(const struct sock *sk, int loc) = NULL;
-EXPORT_SYMBOL(derand_replay_effect_bool);
+bool (*deter_replay_effect_bool)(const struct sock *sk, int loc) = NULL;
+EXPORT_SYMBOL(deter_replay_effect_bool);
 
 void (*advanced_event)(const struct sock *sk, u8 func_num, u8 loc, u8 fmt, int n, ...) = NULL;
 EXPORT_SYMBOL(advanced_event);
 
-void (*derand_record_alert)(const struct sock *sk, int loc) = NULL;
-EXPORT_SYMBOL(derand_record_alert);
+void (*deter_record_alert)(const struct sock *sk, int loc) = NULL;
+EXPORT_SYMBOL(deter_record_alert);
 
-#endif /* DERAND_ENABLE */
+#endif /* DETER_ENABLE */

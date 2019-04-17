@@ -84,8 +84,8 @@
 
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 int sysctl_tcp_tw_reuse __read_mostly;
 int sysctl_tcp_low_latency __read_mostly;
@@ -101,7 +101,7 @@ EXPORT_SYMBOL(tcp_hashinfo);
 
 static  __u32 tcp_v4_init_sequence(const struct sk_buff *skb)
 {
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	return 0;
 	#endif
 	return secure_tcp_sequence_number(ip_hdr(skb)->daddr,
@@ -245,7 +245,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 							   inet->inet_daddr,
 							   inet->inet_sport,
 							   usin->sin_port);
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	tp->write_seq = 0; // set init seq # to 0
 	#endif
 
@@ -482,10 +482,10 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 		skb = tcp_write_queue_head(sk);
 		BUG_ON(!skb);
 
-		#if DERAND_ENABLE
+		#if DETER_ENABLE
 		remaining = icsk->icsk_rto -
 			    min(icsk->icsk_rto,
-				derand_tcp_time_stamp(sk, 29) - tcp_skb_timestamp(skb));
+				deter_tcp_time_stamp(sk, 29) - tcp_skb_timestamp(skb));
 		#else
 		remaining = icsk->icsk_rto -
 			    min(icsk->icsk_rto,
@@ -806,8 +806,8 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 	tcp_v4_send_ack(sock_net(sk), skb,
 			tcptw->tw_snd_nxt, tcptw->tw_rcv_nxt,
 			tcptw->tw_rcv_wnd >> tw->tw_rcv_wscale,
-			#if DERAND_ENABLE
-			derand_tcp_time_stamp(sk, 30) + tcptw->tw_ts_offset,
+			#if DETER_ENABLE
+			deter_tcp_time_stamp(sk, 30) + tcptw->tw_ts_offset,
 			#else
 			tcp_time_stamp + tcptw->tw_ts_offset,
 			#endif
@@ -838,8 +838,8 @@ static void tcp_v4_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 	tcp_v4_send_ack(sock_net(sk), skb, seq,
 			tcp_rsk(req)->rcv_nxt,
 			req->rsk_rcv_wnd >> inet_rsk(req)->rcv_wscale,
-			#if DERAND_ENABLE
-			derand_tcp_time_stamp(sk, 31),
+			#if DETER_ENABLE
+			deter_tcp_time_stamp(sk, 31),
 			#else
 			tcp_time_stamp,
 			#endif
@@ -1324,7 +1324,7 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 	inet_csk(newsk)->icsk_ext_hdr_len = 0;
 	if (inet_opt)
 		inet_csk(newsk)->icsk_ext_hdr_len = inet_opt->opt.optlen;
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	newinet->inet_id = 1; // set the ipid of the first data/ack packet to 1
 	#else
 	newinet->inet_id = newtp->write_seq ^ jiffies;
@@ -1373,7 +1373,7 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 		tcp_move_syn(newtp, req);
 
 	#if 0
-	derand_record_ops.server_recorder_create(newsk);
+	deter_record_ops.server_recorder_create(newsk);
 	#endif
 	return newsk;
 
@@ -1700,15 +1700,15 @@ process:
 
 	sk_incoming_cpu_update(sk);
 
-	#if DERAND_ENABLE
-	derand_record_ops.incoming_pkt_before_lock(sk);
+	#if DETER_ENABLE
+	deter_record_ops.incoming_pkt_before_lock(sk);
 	#endif
 	bh_lock_sock_nested(sk);
-	#if DERAND_ENABLE
-	derand_record_ops.incoming_pkt(sk);
+	#if DETER_ENABLE
+	deter_record_ops.incoming_pkt(sk);
 	#endif
-	#if DERAND_ENABLE
-	derand_record_ops.mon_net_action(sk, skb);
+	#if DETER_ENABLE
+	deter_record_ops.mon_net_action(sk, skb);
 	#endif
 	tcp_sk(sk)->segs_in += max_t(u16, 1, skb_shinfo(skb)->gso_segs);
 	ret = 0;

@@ -21,8 +21,8 @@
 #include <linux/module.h>
 #include <linux/gfp.h>
 #include <net/tcp.h>
-/* DERAND */
-#include <net/derand_ops.h>
+/* DETER */
+#include <net/deter_ops.h>
 
 int sysctl_tcp_syn_retries __read_mostly = TCP_SYN_RETRIES;
 int sysctl_tcp_synack_retries __read_mostly = TCP_SYNACK_RETRIES;
@@ -61,8 +61,8 @@ static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 
 	/* If peer does not open window for long time, or did not transmit
 	 * anything for long time, penalize it. */
-	#if DERAND_ENABLE
-	if ((s32)(derand_tcp_time_stamp(sk, 47) - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
+	#if DETER_ENABLE
+	if ((s32)(deter_tcp_time_stamp(sk, 47) - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
 	#else
 	if ((s32)(tcp_time_stamp - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
 	#endif
@@ -75,8 +75,8 @@ static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 	if (tcp_check_oom(sk, shift)) {
 		/* Catch exceptional cases, when connection requires reset.
 		 *      1. Last segment was sent recently. */
-		#if DERAND_ENABLE
-		if ((s32)(derand_tcp_time_stamp(sk, 48) - tp->lsndtime) <= TCP_TIMEWAIT_LEN ||
+		#if DETER_ENABLE
+		if ((s32)(deter_tcp_time_stamp(sk, 48) - tp->lsndtime) <= TCP_TIMEWAIT_LEN ||
 		#else
 		if ((s32)(tcp_time_stamp - tp->lsndtime) <= TCP_TIMEWAIT_LEN ||
 		#endif
@@ -117,8 +117,8 @@ static void tcp_mtu_probing(struct inet_connection_sock *icsk, struct sock *sk)
 	if (net->ipv4.sysctl_tcp_mtu_probing) {
 		if (!icsk->icsk_mtup.enabled) {
 			icsk->icsk_mtup.enabled = 1;
-			#if DERAND_ENABLE
-			icsk->icsk_mtup.probe_timestamp = derand_tcp_time_stamp(sk, 49);
+			#if DETER_ENABLE
+			icsk->icsk_mtup.probe_timestamp = deter_tcp_time_stamp(sk, 49);
 			#else
 			icsk->icsk_mtup.probe_timestamp = tcp_time_stamp;
 			#endif
@@ -166,11 +166,11 @@ static bool retransmits_timed_out(struct sock *sk,
 			timeout = ((2 << linear_backoff_thresh) - 1) * rto_base +
 				(boundary - linear_backoff_thresh) * TCP_RTO_MAX;
 	}
-	#if DERAND_ENABLE
-	derand_general_event(sk, 340, timeout);
+	#if DETER_ENABLE
+	deter_general_event(sk, 340, timeout);
 	#endif
-	#if DERAND_ENABLE
-	return (derand_tcp_time_stamp(sk, 50) - start_ts) >= timeout;
+	#if DETER_ENABLE
+	return (deter_tcp_time_stamp(sk, 50) - start_ts) >= timeout;
 	#else
 	return (tcp_time_stamp - start_ts) >= timeout;
 	#endif
@@ -184,8 +184,8 @@ static int tcp_write_timeout(struct sock *sk)
 	int retry_until;
 	bool do_reset, syn_set = false;
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 330, sk->sk_state);
+	#if DETER_ENABLE
+	deter_general_event(sk, 330, sk->sk_state);
 	#endif
 	if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV)) {
 		if (icsk->icsk_retransmits) {
@@ -199,8 +199,8 @@ static int tcp_write_timeout(struct sock *sk)
 		retry_until = icsk->icsk_syn_retries ? : sysctl_tcp_syn_retries;
 		syn_set = true;
 	} else {
-		#if DERAND_ENABLE
-		derand_general_event(sk, 331, sysctl_tcp_retries1);
+		#if DETER_ENABLE
+		deter_general_event(sk, 331, sysctl_tcp_retries1);
 		#endif
 		if (retransmits_timed_out(sk, sysctl_tcp_retries1, 0, 0)) {
 			/* Some middle-boxes may black-hole Fast Open _after_
@@ -215,8 +215,8 @@ static int tcp_write_timeout(struct sock *sk)
 					NET_INC_STATS_BH(sock_net(sk),
 							 LINUX_MIB_TCPFASTOPENACTIVEFAIL);
 			}
-			#if DERAND_ENABLE
-			derand_general_event(sk, 332, 0);
+			#if DETER_ENABLE
+			deter_general_event(sk, 332, 0);
 			#endif
 			/* Black hole detection */
 			tcp_mtu_probing(icsk, sk);
@@ -225,15 +225,15 @@ static int tcp_write_timeout(struct sock *sk)
 		}
 
 		retry_until = sysctl_tcp_retries2;
-		#if DERAND_ENABLE
-		derand_general_event(sk, 333, retry_until);
+		#if DETER_ENABLE
+		deter_general_event(sk, 333, retry_until);
 		#endif
 		if (sock_flag(sk, SOCK_DEAD)) {
 			const bool alive = icsk->icsk_rto < TCP_RTO_MAX;
 
 			retry_until = tcp_orphan_retries(sk, alive);
-			#if DERAND_ENABLE
-			derand_general_event(sk, 334, retry_until);
+			#if DETER_ENABLE
+			deter_general_event(sk, 334, retry_until);
 			#endif
 			do_reset = alive ||
 				!retransmits_timed_out(sk, retry_until, 0, 0);
@@ -243,8 +243,8 @@ static int tcp_write_timeout(struct sock *sk)
 		}
 	}
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 335, retry_until);
+	#if DETER_ENABLE
+	deter_general_event(sk, 335, retry_until);
 	#endif
 	if (retransmits_timed_out(sk, retry_until,
 				  syn_set ? 0 : icsk->icsk_user_timeout, syn_set)) {
@@ -260,8 +260,8 @@ void tcp_delack_timer_handler(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 0, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 0, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
 	#endif
 	sk_mem_reclaim_partial(sk);
 
@@ -269,8 +269,8 @@ void tcp_delack_timer_handler(struct sock *sk)
 	    !(icsk->icsk_ack.pending & ICSK_ACK_TIMER))
 		goto out;
 
-	#if DERAND_ENABLE
-	if (time_after(icsk->icsk_ack.timeout, derand_jiffies(sk, 8))) {
+	#if DETER_ENABLE
+	if (time_after(icsk->icsk_ack.timeout, deter_jiffies(sk, 8))) {
 	#else
 	if (time_after(icsk->icsk_ack.timeout, jiffies)) {
 	#endif
@@ -306,15 +306,15 @@ void tcp_delack_timer_handler(struct sock *sk)
 	}
 
 out:
-	#if DERAND_ENABLE
-	if (derand_tcp_under_memory_pressure(sk))
+	#if DETER_ENABLE
+	if (deter_tcp_under_memory_pressure(sk))
 	#else
 	if (tcp_under_memory_pressure(sk))
 	#endif
 		sk_mem_reclaim(sk);
-	#if DERAND_ENABLE
-	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 1, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
-	derand_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 2, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
+	#if DETER_ENABLE
+	deter_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 1, 0b01000, icsk->icsk_ack.pending, icsk->icsk_ack.timeout, icsk->icsk_ack.pingpong, icsk->icsk_ack.ato, icsk->icsk_rto);
+	deter_advanced_event(sk, DR_TCP_DELACK_TIMER_HANDLER, 2, 0b00, sk->sk_sndbuf, sk->sk_wmem_queued);
 	#endif
 }
 
@@ -322,13 +322,13 @@ static void tcp_delack_timer(unsigned long data)
 {
 	struct sock *sk = (struct sock *)data;
 
-	#if DERAND_ENABLE
-	derand_record_ops.delack_timer_before_lock(sk);
+	#if DETER_ENABLE
+	deter_record_ops.delack_timer_before_lock(sk);
 	#endif
 	bh_lock_sock(sk);
-	#if DERAND_ENABLE
-	derand_record_ops.delack_timer(sk);
-	derand_advanced_event(sk, DR_TCP_DELACK_TIMER, 0, 0b0, sock_owned_by_user(sk));
+	#if DETER_ENABLE
+	deter_record_ops.delack_timer(sk);
+	deter_advanced_event(sk, DR_TCP_DELACK_TIMER, 0, 0b0, sock_owned_by_user(sk));
 	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_delack_timer_handler(sk);
@@ -365,14 +365,14 @@ static void tcp_probe_timer(struct sock *sk)
 	 */
 	start_ts = tcp_skb_timestamp(tcp_send_head(sk));
 	if (!start_ts)
-		#if DERAND_ENABLE
-		derand_skb_mstamp_get(sk, &tcp_send_head(sk)->skb_mstamp, 9);
+		#if DETER_ENABLE
+		deter_skb_mstamp_get(sk, &tcp_send_head(sk)->skb_mstamp, 9);
 		#else
 		skb_mstamp_get(&tcp_send_head(sk)->skb_mstamp);
 		#endif
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	else if (icsk->icsk_user_timeout &&
-		 (s32)(derand_tcp_time_stamp(sk, 51) - start_ts) > icsk->icsk_user_timeout)
+		 (s32)(deter_tcp_time_stamp(sk, 51) - start_ts) > icsk->icsk_user_timeout)
 	#else
 	else if (icsk->icsk_user_timeout &&
 		 (s32)(tcp_time_stamp - start_ts) > icsk->icsk_user_timeout)
@@ -452,8 +452,8 @@ void tcp_retransmit_timer(struct sock *sk)
 
 	tp->tlp_high_seq = 0;
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 310, tp->snd_wnd);
+	#if DETER_ENABLE
+	deter_general_event(sk, 310, tp->snd_wnd);
 	#endif
 	if (!tp->snd_wnd && !sock_flag(sk, SOCK_DEAD) &&
 	    !((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))) {
@@ -479,8 +479,8 @@ void tcp_retransmit_timer(struct sock *sk)
 					    tp->snd_una, tp->snd_nxt);
 		}
 #endif
-		#if DERAND_ENABLE
-		if (derand_tcp_time_stamp(sk, 52) - tp->rcv_tstamp > TCP_RTO_MAX) {
+		#if DETER_ENABLE
+		if (deter_tcp_time_stamp(sk, 52) - tp->rcv_tstamp > TCP_RTO_MAX) {
 		#else
 		if (tcp_time_stamp - tp->rcv_tstamp > TCP_RTO_MAX) {
 		#endif
@@ -496,8 +496,8 @@ void tcp_retransmit_timer(struct sock *sk)
 	if (tcp_write_timeout(sk))
 		goto out;
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 311, icsk->icsk_retransmits);
+	#if DETER_ENABLE
+	deter_general_event(sk, 311, icsk->icsk_retransmits);
 	#endif
 	if (icsk->icsk_retransmits == 0) {
 		int mib_idx;
@@ -589,12 +589,12 @@ void tcp_write_timer_handler(struct sock *sk)
 	    !icsk->icsk_pending)
 		goto out;
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 300, icsk->icsk_timeout);
-	derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 0, 0x1, icsk->icsk_timeout);
+	#if DETER_ENABLE
+	deter_general_event(sk, 300, icsk->icsk_timeout);
+	deter_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 0, 0x1, icsk->icsk_timeout);
 	#endif
-	#if DERAND_ENABLE
-	if (time_after(icsk->icsk_timeout, derand_jiffies(sk, 9))) {
+	#if DETER_ENABLE
+	if (time_after(icsk->icsk_timeout, deter_jiffies(sk, 9))) {
 	#else
 	if (time_after(icsk->icsk_timeout, jiffies)) {
 	#endif
@@ -602,9 +602,9 @@ void tcp_write_timer_handler(struct sock *sk)
 		goto out;
 	}
 
-	#if DERAND_ENABLE
-	derand_general_event(sk, 301, icsk->icsk_pending);
-	derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 1, 0x0, icsk->icsk_pending);
+	#if DETER_ENABLE
+	deter_general_event(sk, 301, icsk->icsk_pending);
+	deter_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 1, 0x0, icsk->icsk_pending);
 	#endif
 	event = icsk->icsk_pending;
 
@@ -626,10 +626,10 @@ void tcp_write_timer_handler(struct sock *sk)
 	}
 
 out:
-	#if DERAND_ENABLE
+	#if DETER_ENABLE
 	{
 		struct tcp_sock *tp = tcp_sk(sk);
-		derand_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 2, 0x00000000, sk->sk_sndbuf, sk->sk_wmem_queued, tp->packets_out, tp->lost_out, tcp_packets_in_flight(tp), tp->write_seq, tp->pushed_seq, tp->snd_una);
+		deter_advanced_event(sk, DR_TCP_WRITE_TIMER_HANDLER, 2, 0x00000000, sk->sk_sndbuf, sk->sk_wmem_queued, tp->packets_out, tp->lost_out, tcp_packets_in_flight(tp), tp->write_seq, tp->pushed_seq, tp->snd_una);
 	}
 	#endif
 	sk_mem_reclaim(sk);
@@ -639,13 +639,13 @@ static void tcp_write_timer(unsigned long data)
 {
 	struct sock *sk = (struct sock *)data;
 
-	#if DERAND_ENABLE
-	derand_record_ops.write_timer_before_lock(sk);
+	#if DETER_ENABLE
+	deter_record_ops.write_timer_before_lock(sk);
 	#endif
 	bh_lock_sock(sk);
-	#if DERAND_ENABLE
-	derand_record_ops.write_timer(sk);
-	derand_advanced_event(sk, DR_TCP_WRITE_TIMER, 0, 0b0, sock_owned_by_user(sk));
+	#if DETER_ENABLE
+	deter_record_ops.write_timer(sk);
+	deter_advanced_event(sk, DR_TCP_WRITE_TIMER, 0, 0b0, sock_owned_by_user(sk));
 	#endif
 	if (!sock_owned_by_user(sk)) {
 		tcp_write_timer_handler(sk);
@@ -685,13 +685,13 @@ static void tcp_keepalive_timer (unsigned long data)
 	struct tcp_sock *tp = tcp_sk(sk);
 	u32 elapsed;
 
-	#if DERAND_ENABLE
-	derand_record_ops.keepalive_timer_before_lock(sk);
+	#if DETER_ENABLE
+	deter_record_ops.keepalive_timer_before_lock(sk);
 	#endif
 	/* Only process if socket is not in use. */
 	bh_lock_sock(sk);
-	#if DERAND_ENABLE
-	derand_record_ops.keepalive_timer(sk);
+	#if DETER_ENABLE
+	deter_record_ops.keepalive_timer(sk);
 	#endif
 	if (sock_owned_by_user(sk)) {
 		/* Try again later. */
